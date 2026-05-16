@@ -1,6 +1,5 @@
 'use strict';
-const cheerio = require('cheerio');
-const { interceptApiResponse, fetchPage } = require('./browser');
+const { interceptApiResponse, debugAllRequests } = require('./browser');
 
 const BLOCKET_SEARCH = 'https://www.blocket.se/annonser/hela_sverige/fritid_hobby/battar_vattensport/segelbaatar';
 const BLOCKET_BASE = 'https://www.blocket.se';
@@ -35,36 +34,6 @@ function parseAd(ad, sekToNok) {
   };
 }
 
-function extractFromHtml(html, sekToNok) {
-  const $ = cheerio.load(html);
-  const results = [];
-
-  // __NEXT_DATA__
-  const nextData = $('script#__NEXT_DATA__').text();
-  if (nextData) {
-    try {
-      const json = JSON.parse(nextData);
-      // Blocket lagrer annonser mange steder i treet
-      const ads =
-        json?.props?.pageProps?.initialState?.searchPage?.ads ||
-        json?.props?.pageProps?.initialState?.listing?.items ||
-        json?.props?.pageProps?.ads ||
-        json?.props?.pageProps?.listings ||
-        [];
-      if (ads.length > 0) {
-        console.log(`Blocket: ${ads.length} via __NEXT_DATA__`);
-        return ads.map((ad) => parseAd(ad, sekToNok)).filter((d) => d.external_id);
-      }
-      // Logg alle pageProps-nøkler for debugging
-      console.log('Blocket __NEXT_DATA__ pageProps keys:', Object.keys(json?.props?.pageProps || {}).join(', '));
-    } catch (e) {
-      console.warn('Blocket __NEXT_DATA__ feilet:', e.message);
-    }
-  }
-
-  return results;
-}
-
 async function search(params, rates) {
   const sekToNok = rates?.SEK ?? FALLBACK_SEK_TO_NOK;
   const nokToSek = 1 / sekToNok;
@@ -74,53 +43,34 @@ async function search(params, rates) {
   const url = buildUrl({ ...params, priceMinSEK, priceMaxSEK });
   console.log('Blocket URL:', url);
 
-  // Metode 1: Intercept Blocket sitt interne API
-  try {
-    const captured = await interceptApiResponse(url, {
-      interceptPatterns: [
-        'api.blocket.se',
-        'blocket.se/api',
-        '/search',
-        'listings',
-        'content',
-      ],
-      waitMs: 6000,
-    });
+  // Debug: se alle JSON-kall Blocket gjør
+  const allCalls = await debugAllRequests(url, 8000);
 
-    for (const { url: resUrl, data } of captured) {
-      const ads =
-        data?.data ||
-        data?.ads ||
-        data?.listings ||
-        data?.items ||
-        [];
-      if (Array.isArray(ads) && ads.length > 0) {
-        console.log(`Blocket: ${ads.length} via intercept (${resUrl.substring(0, 60)})`);
-        return ads.map((ad) => parseAd(ad, sekToNok)).filter((d) => d.external_id);
-      }
+  // Intercept alle kall fra blocket-domener
+  const captured = await interceptApiResponse(url, {
+    interceptPatterns: ['blocket.se', 'api.blocket', 'search', 'listings', 'forsale'],
+    waitMs: 8000,
+  });
+
+  for (const { url: resUrl, data } of captured) {
+    // Blocket API returnerer data.data som array
+    const ads = Array.isArray(data?.data) ? data.data
+      : data?.ads || data?.listings || data?.items || [];
+    if (ads.length > 0) {
+      console.log(`Blocket: ${ads.length} annonser via ${resUrl.substring(0,60)}`);
+      return ads.map((ad) => parseAd(ad, sekToNok)).filter((d) => d.external_id);
     }
-    console.log(`Blocket intercept: ${captured.length} kall fanget`);
-  } catch (e) {
-    console.warn('Blocket intercept feilet:', e.message);
   }
 
-  // Metode 2: HTML/__NEXT_DATA__
-  try {
-    const html = await fetchPage(url, 5000);
-    const results = extractFromHtml(html, sekToNok);
-    if (results.length > 0) return results;
-    console.warn('Blocket: ingen data funnet');
-  } catch (e) {
-    console.warn('Blocket HTML feilet:', e.message);
-  }
-
+  console.log(`Blocket: ${captured.length} JSON-kall fanget, ingen annonser`);
   return [];
 }
 
 async function checkListing(listing) {
   try {
+    const { fetchPage } = require('./browser');
     const html = await fetchPage(listing.url, 1000);
-    if (html.includes('Annonsen är såld') || html.includes('Annonsen är borttagen')) return 'sold';
+    if (html.includes('Annonsen är såld')) return 'sold';
     return 'active';
   } catch (e) { return null; }
 }
