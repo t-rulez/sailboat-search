@@ -1,11 +1,9 @@
 'use strict';
 
-// Delt Puppeteer-instans for alle scrapere
 let browser = null;
 
 async function getBrowser() {
   if (browser && browser.connected) return browser;
-
   const puppeteer = require('puppeteer');
   browser = await puppeteer.launch({
     headless: 'new',
@@ -24,39 +22,65 @@ async function getBrowser() {
   return browser;
 }
 
-async function fetchPage(url, waitFor = 2000) {
+// Hent HTML etter full JS-rendering
+async function fetchPage(url, waitMs = 4000) {
   const b = await getBrowser();
   const page = await b.newPage();
-
   try {
-    // Skjul at vi er en bot
     await page.setUserAgent(
       'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
     );
-    await page.setExtraHTTPHeaders({
-      'Accept-Language': 'no-NO,no;q=0.9,en;q=0.8',
+    await page.evaluateOnNewDocument(() => {
+      Object.defineProperty(navigator, 'webdriver', { get: () => false });
     });
+    await page.goto(url, { waitUntil: 'networkidle0', timeout: 40000 });
+    await new Promise((r) => setTimeout(r, waitMs));
+    return await page.content();
+  } finally {
+    await page.close();
+  }
+}
+
+// Intercept JSON-svar fra API-kall siden gjør internt
+async function interceptApiResponse(url, { interceptPatterns, waitMs = 6000 } = {}) {
+  const b = await getBrowser();
+  const page = await b.newPage();
+  const captured = [];
+
+  try {
+    await page.setUserAgent(
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+    );
     await page.evaluateOnNewDocument(() => {
       Object.defineProperty(navigator, 'webdriver', { get: () => false });
     });
 
-    await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
+    // Lytt på alle nettverkssvar
+    page.on('response', async (response) => {
+      const resUrl = response.url();
+      const matches = interceptPatterns.some((p) =>
+        typeof p === 'string' ? resUrl.includes(p) : p.test(resUrl)
+      );
+      if (!matches) return;
+      try {
+        const contentType = response.headers()['content-type'] || '';
+        if (!contentType.includes('json')) return;
+        const json = await response.json();
+        captured.push({ url: resUrl, data: json });
+        console.log('  Interceptet:', resUrl.substring(0, 80));
+      } catch (e) { /* ikke JSON */ }
+    });
 
-    // Vent litt ekstra for JS-rendring
-    if (waitFor) await new Promise((r) => setTimeout(r, waitFor));
-
-    const html = await page.content();
-    return html;
+    await page.goto(url, { waitUntil: 'networkidle0', timeout: 40000 });
+    await new Promise((r) => setTimeout(r, waitMs));
+    return captured;
   } finally {
     await page.close();
   }
 }
 
 async function closeBrowser() {
-  if (browser) {
-    await browser.close();
-    browser = null;
-  }
+  if (browser) { await browser.close(); browser = null; }
 }
 
-module.exports = { getBrowser, fetchPage, closeBrowser };
+module.exports = { getBrowser, fetchPage, interceptApiResponse, closeBrowser };

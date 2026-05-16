@@ -1,108 +1,67 @@
 'use strict';
 const cheerio = require('cheerio');
-const { fetchPage } = require('./browser');
+const { interceptApiResponse, fetchPage } = require('./browser');
 
-// Yachtworld – Norge, Sverige, Danmark – seilbåter
-// Priser i USD
 const BASE_URL = 'https://www.yachtworld.com/boats-for-sale/type-sail/';
 const FALLBACK_USD_TO_NOK = 10.5;
 
 function buildUrl({ brand, yearMin, priceMinUSD, priceMaxUSD, sizeMin, sizeMax }) {
   const q = ['catamaran', brand].filter(Boolean).join(' ');
-  const params = new URLSearchParams({
-    q,
-    country: 'NO,SE,DK',
-    year_min: yearMin || '',
-    loa_min: sizeMin ? Math.round(sizeMin * 0.3048) : '',  // fot → meter
-    loa_max: sizeMax ? Math.round(sizeMax * 0.3048) : '',
-  });
+  const params = new URLSearchParams({ q, country: 'NO,SE,DK' });
+  if (yearMin)     params.set('year_min', yearMin);
+  if (sizeMin)     params.set('loa_min', Math.round(sizeMin * 0.3048));
+  if (sizeMax)     params.set('loa_max', Math.round(sizeMax * 0.3048));
   if (priceMinUSD) params.set('price_min', priceMinUSD);
   if (priceMaxUSD) params.set('price_max', priceMaxUSD);
   return `${BASE_URL}?${params}`;
 }
 
-function parsePrice(str) {
-  if (!str) return null;
-  const num = parseInt(str.replace(/[^\d]/g, ''), 10);
-  return isNaN(num) ? null : num;
+function parseItem(item, usdToNok) {
+  const priceUSD = item.price?.amount ?? item.price ?? item.askingPrice ?? null;
+  const id = String(item.id || item.listing_id || item.boatId || '');
+  const lengthFt = item.length?.feet ?? item.loa ?? item.lengthFt ?? null;
+  return {
+    source: 'yachtworld',
+    external_id: id,
+    url: item.url?.startsWith('http') ? item.url
+      : `https://www.yachtworld.com${item.url || `/boats-for-sale/${id}/`}`,
+    title: [item.make, item.model, item.year].filter(Boolean).join(' ') || item.heading || 'Ukjent',
+    brand: item.make || item.manufacturer || null,
+    boat_type: 'katamaran',
+    price_nok: priceUSD ? Math.round(priceUSD * usdToNok) : null,
+    price_original: priceUSD ? Math.round(priceUSD) : null,
+    currency: 'USD',
+    year: item.year || null,
+    length_ft: lengthFt ? parseFloat(lengthFt) : null,
+    image_url: item.media?.[0]?.url || item.images?.[0]?.url || item.heroImage || null,
+    location: item.location?.city || item.location?.country || item.countryCode || null,
+  };
 }
 
-function scrapeListings($, usdToNok) {
+function extractFromHtml(html, usdToNok) {
+  const $ = cheerio.load(html);
   const results = [];
-
-  // Prøv __NEXT_DATA__ / window.__INITIAL_STATE__
   $('script').each((_, el) => {
-    const text = $(el).text();
-    if (!text.includes('"listings"') && !text.includes('"boats"')) return;
+    const text = $(el).text().trim();
+    if (!text.includes('listings') && !text.includes('boats')) return;
     try {
-      const json = JSON.parse(text);
+      // Kan være window.__INITIAL_STATE__ = {...}
+      const jsonMatch = text.match(/(?:window\.__(?:INITIAL_STATE|DATA)__\s*=\s*)(\{.+\})/) ||
+                        text.match(/^(\{.+\})$/s);
+      if (!jsonMatch) return;
+      const json = JSON.parse(jsonMatch[1]);
       const listings =
         json?.searchResults?.listings ||
         json?.props?.pageProps?.searchResults?.listings ||
-        json?.props?.pageProps?.boats ||
         json?.listings ||
+        json?.boats ||
         [];
-      if (!listings.length) return;
-
-      console.log(`YW: ${listings.length} via JSON`);
       listings.forEach((item) => {
-        const priceUSD = item.price?.amount ?? item.price ?? null;
-        const id = String(item.id || item.listing_id || '');
-        if (!id) return;
-        results.push({
-          source: 'yachtworld',
-          external_id: id,
-          url: item.url?.startsWith('http') ? item.url : `https://www.yachtworld.com${item.url || `/boats-for-sale/${id}/`}`,
-          title: item.make_model || item.heading || item.name || 'Ukjent',
-          brand: item.make || item.manufacturer || null,
-          boat_type: 'katamaran',
-          price_nok: priceUSD ? Math.round(priceUSD * usdToNok) : null,
-          price_original: priceUSD ? Math.round(priceUSD) : null,
-          currency: 'USD',
-          year: item.year || null,
-          length_ft: item.length?.feet ?? item.loa ?? null,
-          image_url: item.media?.[0]?.url || item.images?.[0]?.url || item.thumbnail || null,
-          location: item.location?.city || item.location?.country || null,
-        });
+        const parsed = parseItem(item, usdToNok);
+        if (parsed.external_id) results.push(parsed);
       });
-    } catch (e) { /* ikke gyldig JSON */ }
+    } catch (e) {}
   });
-
-  if (results.length > 0) return results;
-
-  // Fallback: HTML-scraping av kort
-  $('[class*="SearchResult"], [class*="listing-card"], article[class*="boat"]').each((_, el) => {
-    const $el = $(el);
-    const href = $el.find('a').first().attr('href') || '';
-    const idMatch = href.match(/\/(\d+)\/?$/);
-    const id = idMatch?.[1] || $el.attr('data-id') || '';
-    if (!id) return;
-
-    const title = $el.find('h2, h3, [class*="title"], [class*="make"]').first().text().trim();
-    const priceText = $el.find('[class*="price"], [class*="Price"]').first().text().trim();
-    const priceUSD = parsePrice(priceText);
-    const imgUrl = $el.find('img').first().attr('src') || null;
-    const yearText = $el.find('[class*="year"]').first().text().trim();
-    const year = parseInt(yearText) || null;
-
-    if (!id || !title) return;
-    results.push({
-      source: 'yachtworld',
-      external_id: id,
-      url: href.startsWith('http') ? href : `https://www.yachtworld.com${href}`,
-      title,
-      brand: null,
-      boat_type: 'katamaran',
-      price_nok: priceUSD ? Math.round(priceUSD * usdToNok) : null,
-      price_original: priceUSD,
-      currency: 'USD',
-      year,
-      length_ft: null,
-      image_url: imgUrl,
-      location: null,
-    });
-  });
-
   return results;
 }
 
@@ -115,23 +74,57 @@ async function search(params, rates) {
   const url = buildUrl({ ...params, priceMinUSD, priceMaxUSD });
   console.log('Yachtworld URL:', url);
 
-  const html = await fetchPage(url, 3000);
-  const $ = cheerio.load(html);
-  const results = scrapeListings($, usdToNok);
-  console.log(`Yachtworld: ${results.length} annonser funnet`);
-  return results;
+  // Metode 1: Intercept internt API
+  try {
+    const captured = await interceptApiResponse(url, {
+      interceptPatterns: [
+        'yachtworld.com/api',
+        '/search',
+        'listings',
+        'boats-for-sale',
+      ],
+      waitMs: 6000,
+    });
+
+    for (const { data } of captured) {
+      const listings =
+        data?.searchResults?.listings ||
+        data?.listings ||
+        data?.boats ||
+        data?.data?.listings ||
+        [];
+      if (listings.length > 0) {
+        console.log(`Yachtworld: ${listings.length} via intercept`);
+        return listings.map((i) => parseItem(i, usdToNok)).filter((d) => d.external_id);
+      }
+    }
+    console.log(`Yachtworld intercept: ${captured.length} kall fanget, ingen listings`);
+  } catch (e) {
+    console.warn('Yachtworld intercept feilet:', e.message);
+  }
+
+  // Metode 2: HTML-parsing
+  try {
+    const html = await fetchPage(url, 5000);
+    const results = extractFromHtml(html, usdToNok);
+    if (results.length > 0) {
+      console.log(`Yachtworld: ${results.length} via HTML`);
+      return results;
+    }
+    console.warn('Yachtworld: ingen data. HTML-start:', html.substring(0, 300).replace(/\s+/g, ' '));
+  } catch (e) {
+    console.warn('Yachtworld HTML feilet:', e.message);
+  }
+
+  return [];
 }
 
 async function checkListing(listing) {
   try {
     const html = await fetchPage(listing.url, 1000);
-    if (html.includes('This listing is no longer available') ||
-        html.includes('listing has been removed') ||
-        html.includes('sold')) return 'sold';
+    if (html.includes('no longer available') || html.includes('listing has been sold')) return 'sold';
     return 'active';
-  } catch (e) {
-    return null;
-  }
+  } catch (e) { return null; }
 }
 
 module.exports = { search, checkListing };

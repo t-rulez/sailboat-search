@@ -1,11 +1,11 @@
 'use strict';
 const cheerio = require('cheerio');
-const { fetchPage } = require('./browser');
+const { interceptApiResponse, fetchPage } = require('./browser');
 
 const FINN_SEARCH = 'https://www.finn.no/boat/used/search';
 
-function buildUrl({ boatType, brand, yearMin, priceMin, priceMax, sizeMin, sizeMax }) {
-  const q = [boatType, brand].filter(Boolean).join(' ');
+function buildUrl({ brand, yearMin, priceMin, priceMax, sizeMin, sizeMax }) {
+  const q = ['katamaran', brand].filter(Boolean).join(' ');
   const params = new URLSearchParams({
     searchkey: 'BOAT_USED',
     q,
@@ -19,74 +19,49 @@ function buildUrl({ boatType, brand, yearMin, priceMin, priceMax, sizeMin, sizeM
   return `${FINN_SEARCH}?${params}`;
 }
 
-function scrapeListings($) {
+function parseDoc(doc, usdToNok) {
+  const price = doc.price?.amount ?? doc.price ?? null;
+  const priceVal = typeof price === 'object' ? price?.amount : price;
+  return {
+    source: 'finn',
+    external_id: String(doc.finnkode || doc.id || ''),
+    url: doc.canonical_url || `https://www.finn.no/boat/used/ad.html?finnkode=${doc.finnkode}`,
+    title: doc.heading || doc.main_search_heading || 'Ukjent',
+    brand: doc.make || doc.brand || null,
+    boat_type: 'katamaran',
+    price_nok: priceVal ? Math.round(priceVal) : null,
+    price_original: priceVal ? Math.round(priceVal) : null,
+    currency: 'NOK',
+    year: doc.year || doc.model_year || null,
+    length_ft: doc.boat_length ? parseFloat(doc.boat_length) : null,
+    image_url: doc.main_search_image?.url || doc.image?.url || null,
+    location: doc.location || null,
+  };
+}
+
+function extractFromHtml(html) {
+  const $ = cheerio.load(html);
   const results = [];
 
-  // Prøv JSON-data i script-tagger først
-  $('script[type="application/json"], script#__NEXT_DATA__').each((_, el) => {
+  // Prøv alle script-tagger for JSON-data
+  $('script').each((_, el) => {
+    const text = $(el).text().trim();
+    if (!text.startsWith('{') && !text.startsWith('[')) return;
     try {
-      const json = JSON.parse($(el).text());
+      const json = JSON.parse(text);
       const docs =
         json?.docs ||
+        json?.response?.docs ||
         json?.props?.pageProps?.search?.docs ||
-        json?.props?.pageProps?.initialProps?.docs ||
+        json?.data?.docs ||
         [];
       if (docs.length > 0) {
         docs.forEach((doc) => {
-          const price = doc.price?.amount ?? doc.price ?? null;
-          const id = String(doc.finnkode || doc.id || '');
-          if (!id) return;
-          results.push({
-            source: 'finn',
-            external_id: id,
-            url: doc.canonical_url || `https://www.finn.no/boat/used/ad.html?finnkode=${id}`,
-            title: doc.heading || doc.main_search_heading || 'Ukjent',
-            brand: doc.make || doc.brand || null,
-            boat_type: doc.boat_type_name || null,
-            price_nok: price ? Math.round(price) : null,
-            price_original: price ? Math.round(price) : null,
-            currency: 'NOK',
-            year: doc.year || doc.model_year || null,
-            length_ft: doc.boat_length ? parseFloat(doc.boat_length) : null,
-            image_url: doc.main_search_image?.url || doc.image?.url || null,
-            location: doc.location || null,
-          });
+          const item = parseDoc(doc);
+          if (item.external_id) results.push(item);
         });
       }
-    } catch (e) { /* ikke JSON */ }
-  });
-
-  if (results.length > 0) return results;
-
-  // Fallback: HTML-scraping
-  $('article[data-testid], [class*="sf-search-ad"], [class*="AdCard"]').each((_, el) => {
-    const $el = $(el);
-    const href = $el.find('a[href*="finn.no/boat"], a[href*="/boat/used/ad"]').first().attr('href') || '';
-    const idMatch = href.match(/finnkode=(\d+)/) || href.match(/\/ad\.html\?finnkode=(\d+)/);
-    const id = idMatch?.[1] || '';
-    if (!id) return;
-
-    const title = $el.find('h2, h3').first().text().trim();
-    const priceText = $el.find('[class*="price"], [class*="Price"]').first().text().trim();
-    const price = parseInt(priceText.replace(/[^\d]/g, '')) || null;
-    const imgUrl = $el.find('img').first().attr('src') || null;
-
-    if (!id || !title) return;
-    results.push({
-      source: 'finn',
-      external_id: id,
-      url: href.startsWith('http') ? href : `https://www.finn.no${href}`,
-      title,
-      brand: null,
-      boat_type: null,
-      price_nok: price,
-      price_original: price,
-      currency: 'NOK',
-      year: null,
-      length_ft: null,
-      image_url: imgUrl,
-      location: null,
-    });
+    } catch (e) {}
   });
 
   return results;
@@ -95,26 +70,55 @@ function scrapeListings($) {
 async function search(params) {
   const url = buildUrl(params);
   console.log('Finn URL:', url);
-  const html = await fetchPage(url, 2500);
-  const $ = cheerio.load(html);
-  const results = scrapeListings($);
-  console.log(`Finn: ${results.length} annonser funnet`);
-  return results;
+
+  // Metode 1: Intercept det interne API-kallet Finn.no gjør
+  try {
+    const captured = await interceptApiResponse(url, {
+      interceptPatterns: [
+        'search-qf',
+        '/api/search',
+        'finn.no/api',
+        'searchkey=BOAT_USED',
+      ],
+      waitMs: 5000,
+    });
+
+    for (const { data } of captured) {
+      const docs = data?.docs || data?.response?.docs || data?.data?.docs || [];
+      if (docs.length > 0) {
+        console.log(`Finn: ${docs.length} via API-intercept`);
+        return docs.map(parseDoc).filter((d) => d.external_id);
+      }
+    }
+  } catch (e) {
+    console.warn('Finn intercept feilet:', e.message);
+  }
+
+  // Metode 2: Parse HTML
+  try {
+    const html = await fetchPage(url, 4000);
+    const results = extractFromHtml(html);
+    if (results.length > 0) {
+      console.log(`Finn: ${results.length} via HTML`);
+      return results;
+    }
+    // Debug: logg hva slags HTML vi fikk
+    const snippet = html.substring(0, 500).replace(/\s+/g, ' ');
+    console.warn('Finn: ingen data funnet. HTML-start:', snippet);
+  } catch (e) {
+    console.warn('Finn HTML feilet:', e.message);
+  }
+
+  return [];
 }
 
 async function checkListing(listing) {
   try {
     const html = await fetchPage(listing.url, 1000);
-    if (
-      html.includes('Denne annonsen er solgt') ||
-      html.includes('Annonsen er slettet') ||
-      html.includes('"sold":true')
-    ) return 'sold';
+    if (html.includes('Denne annonsen er solgt') || html.includes('"sold":true')) return 'sold';
     if (html.includes('Finner ikke siden')) return 'removed';
     return 'active';
-  } catch (e) {
-    return null;
-  }
+  } catch (e) { return null; }
 }
 
 module.exports = { search, checkListing };
