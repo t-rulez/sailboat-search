@@ -1,4 +1,5 @@
 'use strict';
+const axios = require('axios');
 const { interceptApiResponse, debugAllRequests } = require('./browser');
 
 const BASE_URL = 'https://www.boat24.com/en/sailboats/';
@@ -46,26 +47,52 @@ async function search(params, rates) {
   const url = buildUrl({ ...params, priceMinEUR, priceMaxEUR });
   console.log('Boat24 URL:', url);
 
-  // Debug: se alle JSON-kall
-  const allCalls = await debugAllRequests(url, 8000);
+  // Boat24 er blokkert av Cloudflare for Puppeteer
+  // Prøv direkte axios-kall mot Boat24 sitt søke-API
+  // Boat24 har et XML/JSON API som brukes av mobilappen
+  const apiUrls = [
+    `https://www.boat24.com/api/boats/?${new URLSearchParams({
+      q: 'catamaran', 'country[]': 'NO', year_from: params.yearMin || 2018, format: 'json'
+    })}`,
+    `https://www.boat24.com/en/sailboats/api/?q=catamaran&country[]=NO&country[]=SE&country[]=DK`,
+  ];
 
-  // Intercept bredt
+  for (const apiUrl of apiUrls) {
+    try {
+      const res = await axios.get(apiUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+          'Accept': 'application/json',
+          'Referer': 'https://www.boat24.com/',
+        },
+        timeout: 10000,
+      });
+      const items = res.data?.boats || res.data?.listings || res.data?.results || res.data?.data || [];
+      if (Array.isArray(items) && items.length > 0) {
+        console.log(`Boat24: ${items.length} via direkte API`);
+        return items.map((i) => parseItem(i, eurToNok)).filter((d) => d.external_id);
+      }
+    } catch (e) {
+      console.log(`Boat24 API ${apiUrl.substring(0,60)}: ${e.response?.status || e.message}`);
+    }
+  }
+
+  // Fallback: Puppeteer med debug
+  const allCalls = await debugAllRequests(url, 10000);
   const captured = await interceptApiResponse(url, {
-    interceptPatterns: ['boat24', 'api', 'boats', 'search', 'listings'],
-    waitMs: 8000,
+    interceptPatterns: ['boat24', 'api', 'boats', 'search'],
+    waitMs: 10000,
   });
 
   for (const { url: resUrl, data } of captured) {
-    const items =
-      data?.boats || data?.listings || data?.results ||
-      data?.data?.boats || data?.data?.listings || [];
+    const items = data?.boats || data?.listings || data?.results || data?.data?.boats || [];
     if (Array.isArray(items) && items.length > 0) {
-      console.log(`Boat24: ${items.length} annonser`);
+      console.log(`Boat24: ${items.length} via Puppeteer intercept`);
       return items.map((i) => parseItem(i, eurToNok)).filter((d) => d.external_id);
     }
   }
 
-  console.log(`Boat24: ${captured.length} JSON-kall fanget, ingen annonser`);
+  console.log(`Boat24: ${captured.length} kall fanget, ingen annonser`);
   return [];
 }
 

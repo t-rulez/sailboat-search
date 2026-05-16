@@ -1,18 +1,26 @@
 'use strict';
 const { interceptApiResponse, debugAllRequests } = require('./browser');
 
-const BASE_URL = 'https://www.yachtworld.com/boats-for-sale/type-sail/';
 const FALLBACK_USD_TO_NOK = 10.5;
 
-function buildUrl({ brand, yearMin, priceMinUSD, priceMaxUSD, sizeMin, sizeMax }) {
+// Yachtworld har separate URLer per land – vi søker alle tre
+function buildUrls({ brand, yearMin, priceMinUSD, priceMaxUSD, sizeMin, sizeMax }) {
   const q = ['catamaran', brand].filter(Boolean).join(' ');
-  const params = new URLSearchParams({ q, country: 'NO,SE,DK' });
-  if (yearMin)     params.set('year_min', yearMin);
-  if (sizeMin)     params.set('loa_min', Math.round(sizeMin * 0.3048));
-  if (sizeMax)     params.set('loa_max', Math.round(sizeMax * 0.3048));
-  if (priceMinUSD) params.set('price_min', priceMinUSD);
-  if (priceMaxUSD) params.set('price_max', priceMaxUSD);
-  return `${BASE_URL}?${params}`;
+  const countries = [
+    { code: 'NO', base: 'https://www.yachtworld.com/boats-for-sale/type-sail/country-norway/' },
+    { code: 'SE', base: 'https://www.yachtworld.com/boats-for-sale/type-sail/country-sweden/' },
+    { code: 'DK', base: 'https://www.yachtworld.com/boats-for-sale/type-sail/country-denmark/' },
+  ];
+
+  return countries.map(({ code, base }) => {
+    const params = new URLSearchParams({ q });
+    if (yearMin)     params.set('year_min', yearMin);
+    if (sizeMin)     params.set('loa_min', Math.round(sizeMin * 0.3048));
+    if (sizeMax)     params.set('loa_max', Math.round(sizeMax * 0.3048));
+    if (priceMinUSD) params.set('price_min', priceMinUSD);
+    if (priceMaxUSD) params.set('price_max', priceMaxUSD);
+    return { code, url: `${base}?${params}` };
+  });
 }
 
 function parseItem(item, usdToNok) {
@@ -32,26 +40,18 @@ function parseItem(item, usdToNok) {
     year: item.year || null,
     length_ft: lengthFt ? parseFloat(lengthFt) : null,
     image_url: item.media?.[0]?.url || item.images?.[0]?.url || item.heroImage || null,
-    location: item.location?.city || item.location?.country || item.countryCode || null,
+    location: item.location?.city || item.location?.country || null,
   };
 }
 
-async function search(params, rates) {
-  const usdToNok = rates?.USD ?? FALLBACK_USD_TO_NOK;
-  const nokToUsd = 1 / usdToNok;
-  const priceMinUSD = params.priceMin ? Math.round(params.priceMin * nokToUsd) : null;
-  const priceMaxUSD = params.priceMax ? Math.round(params.priceMax * nokToUsd) : null;
-
-  const url = buildUrl({ ...params, priceMinUSD, priceMaxUSD });
+async function searchOne(url, usdToNok) {
   console.log('Yachtworld URL:', url);
 
-  // Debug: se alle JSON-kall
-  const allCalls = await debugAllRequests(url, 8000);
+  const allCalls = await debugAllRequests(url, 10000);
 
-  // Intercept bredt
   const captured = await interceptApiResponse(url, {
-    interceptPatterns: ['yachtworld', 'boattrader', 'api', 'search', 'listing'],
-    waitMs: 8000,
+    interceptPatterns: ['yachtworld', 'api', 'search', 'listing', 'boat'],
+    waitMs: 10000,
   });
 
   for (const { url: resUrl, data } of captured) {
@@ -60,13 +60,39 @@ async function search(params, rates) {
       data?.listings || data?.boats ||
       data?.data?.listings || data?.data?.boats || [];
     if (listings.length > 0) {
-      console.log(`Yachtworld: ${listings.length} annonser`);
+      console.log(`Yachtworld: ${listings.length} annonser fra ${resUrl.substring(0,60)}`);
       return listings.map((i) => parseItem(i, usdToNok)).filter((d) => d.external_id);
     }
   }
-
-  console.log(`Yachtworld: ${captured.length} JSON-kall fanget, ingen listings`);
   return [];
+}
+
+async function search(params, rates) {
+  const usdToNok = rates?.USD ?? FALLBACK_USD_TO_NOK;
+  const nokToUsd = 1 / usdToNok;
+  const priceMinUSD = params.priceMin ? Math.round(params.priceMin * nokToUsd) : null;
+  const priceMaxUSD = params.priceMax ? Math.round(params.priceMax * nokToUsd) : null;
+
+  const urls = buildUrls({ ...params, priceMinUSD, priceMaxUSD });
+  const allResults = [];
+
+  for (const { code, url } of urls) {
+    try {
+      const results = await searchOne(url, usdToNok);
+      console.log(`Yachtworld ${code}: ${results.length} annonser`);
+      allResults.push(...results);
+    } catch (e) {
+      console.warn(`Yachtworld ${code} feilet:`, e.message);
+    }
+  }
+
+  // Dedupliser på external_id
+  const seen = new Set();
+  return allResults.filter((r) => {
+    if (seen.has(r.external_id)) return false;
+    seen.add(r.external_id);
+    return true;
+  });
 }
 
 async function checkListing(listing) {
