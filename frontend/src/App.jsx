@@ -104,7 +104,7 @@ export default function App() {
 
       {/* Infobanner */}
       <div className="source-info-banner">
-        Viser katamaraner fra Finn.no, Blocket.se og DBA.dk
+        Viser katamaraner fra Finn.no, Blocket.se, Yachtworld og Boat24
       </div>
 
       {/* Tabs */}

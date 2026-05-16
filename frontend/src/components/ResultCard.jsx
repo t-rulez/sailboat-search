@@ -2,9 +2,10 @@ import { ExternalLink, Calendar, Ruler, Banknote, Tag, Heart, TrendingDown, Tren
 import StatusBadge from './StatusBadge';
 
 const SOURCE_LABELS = {
-  finn:    { label: 'Finn.no',    flag: '🇳🇴' },
-  blocket: { label: 'Blocket.se', flag: '🇸🇪' },
-  dba:     { label: 'DBA.dk',     flag: '🇩🇰' },
+  finn:        { label: 'Finn.no',       flag: '🇳🇴' },
+  blocket:     { label: 'Blocket.se',    flag: '🇸🇪' },
+  yachtworld:  { label: 'Yachtworld',    flag: '🌍' },
+  boat24:      { label: 'Boat24',        flag: '🌍' },
 };
 
 function formatNOK(amount) {

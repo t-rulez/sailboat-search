@@ -10,10 +10,11 @@ const SORT_OPTIONS = [
 ];
 
 const SOURCE_FILTERS = [
-  { key: 'all',     label: 'Alle' },
-  { key: 'finn',    label: '🇳🇴 Finn' },
-  { key: 'blocket', label: '🇸🇪 Blocket' },
-  { key: 'dba',     label: '🇩🇰 DBA' },
+  { key: 'all',         label: 'Alle' },
+  { key: 'finn',        label: '🇳🇴 Finn' },
+  { key: 'blocket',     label: '🇸🇪 Blocket' },
+  { key: 'yachtworld',  label: '🌍 Yachtworld' },
+  { key: 'boat24',      label: '🌍 Boat24' },
 ];
 
 const STATUS_FILTERS = [
