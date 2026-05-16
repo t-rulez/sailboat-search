@@ -1,12 +1,15 @@
 'use strict';
 const axios = require('axios');
 
-const FINN_API = 'https://www.finn.no/api/search-qf';
+// Finn.no sitt søke-API – oppdatert endepunkt
+const FINN_SEARCH = 'https://www.finn.no/api/search-qf';
+const FINN_SEARCH_V2 = 'https://www.finn.no/boat/used/search';
 
 const HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (compatible; BaatSok/1.0)',
-  'Accept': 'application/json',
-  'Accept-Language': 'no-NO,no;q=0.9',
+  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+  'Accept': 'application/json, text/plain, */*',
+  'Accept-Language': 'no-NO,no;q=0.9,en;q=0.8',
+  'Referer': 'https://www.finn.no/',
 };
 
 function buildUrl({ boatType, brand, yearMin, priceMin, priceMax, sizeMin, sizeMax }) {
@@ -23,7 +26,7 @@ function buildUrl({ boatType, brand, yearMin, priceMin, priceMax, sizeMin, sizeM
     rows: '48',
     page: '1',
   });
-  return `${FINN_API}?${params}`;
+  return `${FINN_SEARCH}?${params}`;
 }
 
 function parseDoc(doc) {
@@ -50,13 +53,19 @@ function parseDoc(doc) {
 
 async function search(params) {
   const url = buildUrl(params);
-  const res = await axios.get(url, { headers: HEADERS, timeout: 15000 });
+  console.log('Finn URL:', url);
+
+  const res = await axios.get(url, {
+    headers: HEADERS,
+    timeout: 15000,
+  });
+
   const data = res.data;
-  const docs = data?.docs || data?.response?.docs || [];
+  const docs = data?.docs || data?.response?.docs || data?.data?.docs || [];
+  console.log(`Finn: rådata nøkler: ${Object.keys(data).join(', ')}, docs: ${docs.length}`);
   return docs.map(parseDoc).filter((d) => d.external_id);
 }
 
-// Sjekker status på én enkelt annonse
 async function checkListing(listing) {
   try {
     const res = await axios.get(listing.url, {
@@ -65,24 +74,17 @@ async function checkListing(listing) {
       maxRedirects: 5,
     });
     const html = res.data;
-
-    // Finn marker annonser som solgt på ulike måter
     if (
       html.includes('Denne annonsen er solgt') ||
       html.includes('Annonsen er slettet') ||
       html.includes('"status":"inactive"') ||
       html.includes('"sold":true')
-    ) {
-      return 'sold';
-    }
-    if (res.status === 404 || html.includes('Finner ikke siden')) {
-      return 'removed';
-    }
+    ) return 'sold';
+    if (res.status === 404 || html.includes('Finner ikke siden')) return 'removed';
     return 'active';
   } catch (err) {
     if (err.response?.status === 404) return 'removed';
-    console.warn(`Finn checkListing feilet for ${listing.url}:`, err.message);
-    return null; // null = ukjent, ikke oppdater status
+    return null;
   }
 }
 
