@@ -1,18 +1,9 @@
 'use strict';
-const axios = require('axios');
 const cheerio = require('cheerio');
+const { fetchPage } = require('./browser');
 
 const DBA_BASE = 'https://www.dba.dk';
-// Oppdatert URL-struktur for DBA
 const DBA_SEARCH = 'https://www.dba.dk/biler-og-transport/baade-og-sejlsport/sejlbaade/';
-
-const HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-  'Accept-Language': 'da-DK,da;q=0.9,en;q=0.8',
-  'Accept-Encoding': 'gzip, deflate, br',
-};
-
 const FALLBACK_DKK_TO_NOK = 0.148;
 
 function buildUrl({ boatType, brand, yearMin, priceMinDKK, priceMaxDKK }) {
@@ -33,10 +24,7 @@ function parsePrice(str) {
 function parseLength(str) {
   if (!str) return null;
   const mMatch = str.match(/([\d.,]+)\s*m/i);
-  if (mMatch) {
-    const m = parseFloat(mMatch[1].replace(',', '.'));
-    return parseFloat((m / 0.3048).toFixed(1));
-  }
+  if (mMatch) return parseFloat((parseFloat(mMatch[1].replace(',', '.')) / 0.3048).toFixed(1));
   const ftMatch = str.match(/([\d.,]+)\s*f(o[dt])?/i);
   if (ftMatch) return parseFloat(ftMatch[1].replace(',', '.'));
   return null;
@@ -45,7 +33,7 @@ function parseLength(str) {
 function scrapeListings($, dkkToNok) {
   const results = [];
 
-  // Prøv __NEXT_DATA__ eller window.__data__ først
+  // Prøv __NEXT_DATA__
   const nextData = $('script#__NEXT_DATA__').text();
   if (nextData) {
     try {
@@ -54,9 +42,10 @@ function scrapeListings($, dkkToNok) {
         json?.props?.pageProps?.listings ||
         json?.props?.pageProps?.searchResult?.listings ||
         json?.props?.pageProps?.ads ||
+        json?.props?.pageProps?.data?.listings ||
         [];
       if (ads.length > 0) {
-        console.log(`DBA: fant ${ads.length} via __NEXT_DATA__`);
+        console.log(`DBA: ${ads.length} via __NEXT_DATA__`);
         ads.forEach((ad) => {
           const priceDKK = ad.price?.price ?? ad.price ?? null;
           const id = String(ad.id || ad.adId || '');
@@ -84,32 +73,24 @@ function scrapeListings($, dkkToNok) {
     }
   }
 
-  // Fallback: klassisk HTML-scraping
-  $('[class*="listingCard"], [class*="ListingCard"], [data-listingid], article').each((_, el) => {
+  // Fallback HTML
+  $('[class*="listingCard"], [class*="ListingCard"], [data-listingid], [class*="Listing"]').each((_, el) => {
     const $el = $(el);
-    const id =
-      $el.attr('data-listingid') ||
-      $el.attr('data-ad-id') ||
-      $el.attr('id')?.replace(/\D/g, '') ||
-      '';
+    const id = $el.attr('data-listingid') || $el.attr('data-ad-id') || '';
     if (!id || id.length < 3) return;
-
-    const title = $el.find('h2, h3, [class*="title"], [class*="Title"]').first().text().trim();
+    const title = $el.find('h2, h3, [class*="title"]').first().text().trim();
     const href = $el.find('a').first().attr('href') || '';
     const url = href.startsWith('http') ? href : `${DBA_BASE}${href}`;
-    const priceText = $el.find('[class*="price"], [class*="Price"]').first().text().trim();
-    const priceDKK = parsePrice(priceText);
-    const imgUrl = $el.find('img').first().attr('src') || $el.find('img').first().attr('data-src') || null;
-
+    const priceDKK = parsePrice($el.find('[class*="price"]').first().text());
+    const imgUrl = $el.find('img').first().attr('src') || null;
     let year = null, lengthFt = null;
-    $el.find('li, [class*="param"], [class*="attr"]').each((_, li) => {
+    $el.find('li, [class*="param"]').each((_, li) => {
       const text = $(li).text().trim();
-      const yearMatch = text.match(/\b(19|20)\d{2}\b/);
-      if (yearMatch && !year) year = parseInt(yearMatch[0]);
-      const len = parseLength(text);
-      if (len && !lengthFt) lengthFt = len;
+      const y = text.match(/\b(19|20)\d{2}\b/);
+      if (y && !year) year = parseInt(y[0]);
+      const l = parseLength(text);
+      if (l && !lengthFt) lengthFt = l;
     });
-
     if (!id || !title) return;
     results.push({
       source: 'dba',
@@ -140,32 +121,21 @@ async function search(params, rates) {
   const url = buildUrl({ ...params, priceMinDKK, priceMaxDKK });
   console.log('DBA URL:', url);
 
-  try {
-    const res = await axios.get(url, { headers: HEADERS, timeout: 15000 });
-    const $ = cheerio.load(res.data);
-    const results = scrapeListings($, dkkToNok);
-    console.log(`DBA: ${results.length} annonser funnet`);
-    return results;
-  } catch (err) {
-    console.warn('DBA søk feilet:', err.response?.status, err.message);
-    return [];
-  }
+  const html = await fetchPage(url, 2500);
+  const $ = cheerio.load(html);
+  const results = scrapeListings($, dkkToNok);
+  console.log(`DBA: ${results.length} annonser funnet`);
+  return results;
 }
 
 async function checkListing(listing) {
   try {
-    const res = await axios.get(listing.url, { headers: HEADERS, timeout: 10000 });
-    const $ = cheerio.load(res.data);
+    const html = await fetchPage(listing.url, 1000);
+    const $ = cheerio.load(html);
     const text = $('body').text();
-    if (
-      text.includes('Annoncen er solgt') ||
-      text.includes('Annoncen er slettet') ||
-      text.includes('ikke længere tilgængelig')
-    ) return 'sold';
-    if (res.status === 404) return 'removed';
+    if (text.includes('Annoncen er solgt') || text.includes('ikke længere tilgængelig')) return 'sold';
     return 'active';
-  } catch (err) {
-    if (err.response?.status === 404) return 'removed';
+  } catch (e) {
     return null;
   }
 }
