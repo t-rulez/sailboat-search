@@ -21,68 +21,102 @@ export default function SearchForm({ onSearch, loading, initialParams }) {
 
   return (
     <div className="search-form">
-      <div className="field-group">
-        <label className="field-label">Båtmerke</label>
-        <input className="field-input" type="text" value={params.brand}
-          onChange={(e) => update('brand', e.target.value)}
-          placeholder="f.eks. Lagoon"
-          onKeyDown={(e) => e.key === 'Enter' && onSearch(params)} />
+
+      {/* Rad 1: Merke + Årsmodell */}
+      <div className="form-row">
+        <div className="field-group">
+          <label className="field-label">Båtmerke</label>
+          <input
+            className="field-input"
+            type="text"
+            value={params.brand}
+            onChange={(e) => update('brand', e.target.value)}
+            placeholder="f.eks. Lagoon"
+            onKeyDown={(e) => e.key === 'Enter' && onSearch(params)}
+          />
+        </div>
+        <div className="field-group">
+          <label className="field-label">Nyere enn</label>
+          <input
+            className="field-input"
+            type="number"
+            value={params.yearMin}
+            onChange={(e) => update('yearMin', parseInt(e.target.value) || 2000)}
+            min={1980}
+            max={2025}
+          />
+        </div>
       </div>
 
+      {/* Rad 2: Pris */}
       <div className="field-group">
-        <label className="field-label">Nyere enn</label>
-        <input className="field-input" type="number" value={params.yearMin}
-          onChange={(e) => update('yearMin', parseInt(e.target.value) || 2000)}
-          min={1980} max={2025} />
-      </div>
-
-      <div className="field-group col-span-2">
         <label className="field-label">
           Pris (NOK) — {formatMillions(params.priceMin)} – {formatMillions(params.priceMax)}
         </label>
-        <div className="flex gap-3">
-          <div className="flex-1">
+        <div className="form-row">
+          <div className="field-group">
             <label className="field-sublabel">Fra</label>
-            <input className="field-input" type="number" value={params.priceMin}
-              onChange={(e) => update('priceMin', parseInt(e.target.value) || 0)} step={500000} />
+            <input
+              className="field-input"
+              type="number"
+              value={params.priceMin}
+              onChange={(e) => update('priceMin', parseInt(e.target.value) || 0)}
+              step={500000}
+            />
           </div>
-          <div className="flex-1">
+          <div className="field-group">
             <label className="field-sublabel">Til</label>
-            <input className="field-input" type="number" value={params.priceMax}
-              onChange={(e) => update('priceMax', parseInt(e.target.value) || 10000000)} step={500000} />
+            <input
+              className="field-input"
+              type="number"
+              value={params.priceMax}
+              onChange={(e) => update('priceMax', parseInt(e.target.value) || 10000000)}
+              step={500000}
+            />
           </div>
         </div>
       </div>
 
-      <div className="field-group col-span-2">
+      {/* Rad 3: Størrelse */}
+      <div className="field-group">
         <label className="field-label">
           Størrelse (fot) — {params.sizeMin}–{params.sizeMax} fot
         </label>
-        <div className="flex gap-3">
-          <div className="flex-1">
+        <div className="form-row">
+          <div className="field-group">
             <label className="field-sublabel">Fra</label>
-            <input className="field-input" type="number" value={params.sizeMin}
+            <input
+              className="field-input"
+              type="number"
+              value={params.sizeMin}
               onChange={(e) => update('sizeMin', parseInt(e.target.value) || 30)}
-              min={20} max={100} />
+              min={20}
+              max={100}
+            />
           </div>
-          <div className="flex-1">
+          <div className="field-group">
             <label className="field-sublabel">Til</label>
-            <input className="field-input" type="number" value={params.sizeMax}
+            <input
+              className="field-input"
+              type="number"
+              value={params.sizeMax}
               onChange={(e) => update('sizeMax', parseInt(e.target.value) || 60)}
-              min={20} max={100} />
+              min={20}
+              max={100}
+            />
           </div>
         </div>
       </div>
 
-      <div className="col-span-2">
-        <button className="search-btn" onClick={() => onSearch(params)} disabled={loading}>
-          {loading ? (
-            <span className="flex items-center gap-2"><span className="spinner" />Søker…</span>
-          ) : (
-            <span className="flex items-center gap-2"><Search size={18} />Filtrer</span>
-          )}
-        </button>
-      </div>
+      {/* Knapp */}
+      <button className="search-btn" onClick={() => onSearch(params)} disabled={loading}>
+        {loading ? (
+          <span className="flex items-center gap-2"><span className="spinner" />Søker…</span>
+        ) : (
+          <span className="flex items-center gap-2"><Search size={18} />Filtrer</span>
+        )}
+      </button>
+
     </div>
   );
 }
