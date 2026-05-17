@@ -2,12 +2,9 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
-const { runRefresh, fetchRates } = require('../jobs/refresh');
 
-// GET /api/search
-// Query-params: boatType, brand, yearMin, priceMin, priceMax, sizeMin, sizeMax,
-//               sort (price_nok|year|length_ft), dir (asc|desc),
-//               status (active|sold|all), source (finn|blocket|dba|all)
+// ─── GET /api/search ─────────────────────────────────────
+// Hent lagrede annonser fra DB med filtre
 router.get('/', async (req, res) => {
   try {
     const {
@@ -29,71 +26,35 @@ router.get('/', async (req, res) => {
     const values = [];
     let idx = 1;
 
-    // Tekstsøk
     if (boatType) {
       conditions.push(`(l.title ILIKE $${idx} OR l.boat_type ILIKE $${idx})`);
-      values.push(`%${boatType}%`);
-      idx++;
+      values.push(`%${boatType}%`); idx++;
     }
     if (brand) {
       conditions.push(`(l.title ILIKE $${idx} OR l.brand ILIKE $${idx})`);
-      values.push(`%${brand}%`);
-      idx++;
+      values.push(`%${brand}%`); idx++;
     }
+    if (yearMin)  { conditions.push(`l.year >= $${idx++}`);       values.push(parseInt(yearMin)); }
+    if (priceMin) { conditions.push(`l.price_nok >= $${idx++}`);  values.push(parseInt(priceMin)); }
+    if (priceMax) { conditions.push(`l.price_nok <= $${idx++}`);  values.push(parseInt(priceMax)); }
+    if (sizeMin)  { conditions.push(`l.length_ft >= $${idx++}`);  values.push(parseFloat(sizeMin)); }
+    if (sizeMax)  { conditions.push(`l.length_ft <= $${idx++}`);  values.push(parseFloat(sizeMax)); }
+    if (status !== 'all') { conditions.push(`l.status = $${idx++}`); values.push(status); }
+    if (source !== 'all') { conditions.push(`l.source = $${idx++}`); values.push(source); }
 
-    // Nummeriske filtre
-    if (yearMin) {
-      conditions.push(`l.year >= $${idx++}`);
-      values.push(parseInt(yearMin));
-    }
-    if (priceMin) {
-      conditions.push(`l.price_nok >= $${idx++}`);
-      values.push(parseInt(priceMin));
-    }
-    if (priceMax) {
-      conditions.push(`l.price_nok <= $${idx++}`);
-      values.push(parseInt(priceMax));
-    }
-    if (sizeMin) {
-      conditions.push(`l.length_ft >= $${idx++}`);
-      values.push(parseFloat(sizeMin));
-    }
-    if (sizeMax) {
-      conditions.push(`l.length_ft <= $${idx++}`);
-      values.push(parseFloat(sizeMax));
-    }
-
-    // Status
-    if (status !== 'all') {
-      conditions.push(`l.status = $${idx++}`);
-      values.push(status);
-    }
-
-    // Kilde
-    if (source !== 'all') {
-      conditions.push(`l.source = $${idx++}`);
-      values.push(source);
-    }
-
-    // Kun favoritter
     const favJoin = favoritesOnly === 'true'
       ? 'INNER JOIN favorites f ON f.listing_id = l.id'
       : 'LEFT JOIN favorites f ON f.listing_id = l.id';
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
-
-    // Sortering – whitelist for å unngå SQL injection
-    const safeSort = ['price_nok', 'year', 'length_ft', 'first_seen_at', 'last_changed_at'].includes(sort)
-      ? sort : 'price_nok';
-    const safeDir = dir === 'desc' ? 'DESC' : 'ASC';
+    const safeSort = ['price_nok','year','length_ft','first_seen_at','last_changed_at'].includes(sort) ? sort : 'price_nok';
+    const safeDir  = dir === 'desc' ? 'DESC' : 'ASC';
 
     const sql = `
-      SELECT
-        l.*,
+      SELECT l.*,
         CASE WHEN f.id IS NOT NULL THEN true ELSE false END AS is_favorite,
         (SELECT ph.price_nok FROM price_history ph
-         WHERE ph.listing_id = l.id ORDER BY ph.recorded_at ASC LIMIT 1
-        ) AS initial_price_nok,
+         WHERE ph.listing_id = l.id ORDER BY ph.recorded_at ASC LIMIT 1) AS initial_price_nok,
         (SELECT COUNT(*) FROM price_history ph WHERE ph.listing_id = l.id) AS price_change_count
       FROM listings l
       ${favJoin}
@@ -110,19 +71,85 @@ router.get('/', async (req, res) => {
   }
 });
 
-// POST /api/search/refresh – kjør refresh manuelt (krever token)
-router.post('/refresh', async (req, res) => {
-  const token = req.headers['x-admin-token'];
-  if (token !== process.env.ADMIN_TOKEN) {
-    return res.status(401).json({ error: 'Ugyldig token' });
-  }
-  // Kjør asynkront – returner med en gang
-  res.json({ message: 'Refresh startet' });
+// ─── POST /api/search/import ──────────────────────────────
+// Tar imot søkeresultater fra klienten og lagrer i DB
+router.post('/import', async (req, res) => {
   try {
-    const rates = await fetchRates();
-    await runRefresh(req.body || undefined);
-  } catch (e) {
-    console.error('Manuell refresh feilet:', e);
+    const { listings } = req.body;
+    if (!Array.isArray(listings) || listings.length === 0) {
+      return res.status(400).json({ error: 'Ingen listings i body' });
+    }
+
+    let inserted = 0, updated = 0, priceChanges = 0;
+
+    for (const listing of listings) {
+      const {
+        source, external_id, url, title, brand, boat_type,
+        price_nok, price_original, currency, year, length_ft,
+        image_url, location,
+      } = listing;
+
+      if (!source || !external_id) continue;
+
+      // Sjekk om finnes fra før
+      const existing = await db.query(
+        'SELECT id, price_nok FROM listings WHERE source=$1 AND external_id=$2',
+        [source, external_id]
+      );
+
+      if (existing.rows.length === 0) {
+        // Ny annonse
+        const result = await db.query(
+          `INSERT INTO listings
+             (source, external_id, url, title, brand, boat_type,
+              price_nok, price_original, currency, year, length_ft,
+              image_url, location, status, first_seen_at, last_checked_at, last_changed_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'active',NOW(),NOW(),NOW())
+           RETURNING id`,
+          [source, external_id, url, title, brand, boat_type,
+           price_nok, price_original, currency, year, length_ft,
+           image_url, location]
+        );
+        if (price_nok) {
+          await db.query(
+            'INSERT INTO price_history (listing_id, price_nok) VALUES ($1,$2)',
+            [result.rows[0].id, price_nok]
+          );
+        }
+        inserted++;
+      } else {
+        const row = existing.rows[0];
+        const priceChanged = price_nok && row.price_nok !== price_nok;
+
+        await db.query(
+          `UPDATE listings SET
+             url=$3, title=$4, brand=$5, boat_type=$6,
+             price_nok=$7, price_original=$8, currency=$9,
+             year=$10, length_ft=$11, image_url=$12, location=$13,
+             status='active', last_checked_at=NOW(),
+             last_changed_at=CASE WHEN $7 != price_nok THEN NOW() ELSE last_changed_at END
+           WHERE source=$1 AND external_id=$2`,
+          [source, external_id, url, title, brand, boat_type,
+           price_nok, price_original, currency, year, length_ft,
+           image_url, location]
+        );
+
+        if (priceChanged) {
+          await db.query(
+            'INSERT INTO price_history (listing_id, price_nok) VALUES ($1,$2)',
+            [row.id, price_nok]
+          );
+          priceChanges++;
+        }
+        updated++;
+      }
+    }
+
+    console.log(`Import: ${inserted} nye, ${updated} oppdatert, ${priceChanges} prisendringer`);
+    res.json({ ok: true, inserted, updated, priceChanges });
+  } catch (err) {
+    console.error('Import error:', err);
+    res.status(500).json({ error: err.message });
   }
 });
 

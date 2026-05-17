@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Heart } from 'lucide-react';
 import SearchForm from './components/SearchForm';
+import ExternalLinks from './components/ExternalLinks';
 import ResultList from './components/ResultList';
 import { useBoatSearch } from './hooks/useBoatSearch';
 import { useFavorites } from './hooks/useFavorites';
@@ -165,6 +166,7 @@ export default function App() {
             onStatusChange={handleStatusChange}
             status={status}
           />
+          <ExternalLinks params={lastSearchParams} />
         </>
       )}
 
@@ -203,7 +205,7 @@ export default function App() {
       )}
 
       <footer className="app-footer">
-        Båtsøk — Data fra Finn.no, Blocket.se og DBA.dk
+        Katamaran langtur 2029 — Finn.no · Blocket.se · Yachtworld · Boat24
       </footer>
     </div>
   );
