@@ -57,8 +57,10 @@ export default function App() {
     }
   }, [API_URL]);
 
-  // Last favoritter ved oppstart
-  useEffect(() => { fetchFavorites(); }, [fetchFavorites]);
+  // Last favoritter ved oppstart – feil her skal ikke krasje appen
+  useEffect(() => {
+    fetchFavorites().catch(() => {});
+  }, []);
 
   const handleSearch = useCallback((params) => {
     setSearchParams(params);
