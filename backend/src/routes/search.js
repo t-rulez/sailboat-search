@@ -18,7 +18,13 @@ router.get('/rates', async (req, res) => {
       https.get('https://api.frankfurter.app/latest?from=NOK&to=SEK,DKK,USD,EUR', (r) => {
         let body = '';
         r.on('data', (c) => body += c);
-        r.on('end', () => resolve(JSON.parse(body)));
+        r.on('end', () => {
+          try {
+            resolve(JSON.parse(body));
+          } catch(e) {
+            reject(new Error('Ikke JSON: ' + body.substring(0, 80)));
+          }
+        });
       }).on('error', reject);
     });
     const rates = {
@@ -31,9 +37,11 @@ router.get('/rates', async (req, res) => {
     ratesCache.ts = Date.now();
     res.json(rates);
   } catch (e) {
-    console.error('Valuta feilet:', e.message);
-    // Fallback-kurser
-    res.json({ SEK: 0.098, DKK: 0.148, USD: 10.5, EUR: 11.8 });
+    console.warn('Valuta feilet, bruker fallback:', e.message);
+    const fallback = { SEK: 0.098, DKK: 0.148, USD: 10.5, EUR: 11.8 };
+    ratesCache.data = fallback;
+    ratesCache.ts = Date.now() - (CACHE_MS - 60000); // prøv igjen om 1 min
+    res.json(fallback);
   }
 });
 

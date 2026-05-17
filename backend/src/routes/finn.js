@@ -3,9 +3,6 @@ const express = require('express');
 const router = express.Router();
 const https = require('https');
 
-// ─── GET /api/finn ───────────────────────────────────────
-// Proxy for Finn.no søk – unngår CORS-blokkering i nettleseren
-
 function httpsGet(url) {
   return new Promise((resolve, reject) => {
     const req = https.get(url, {
@@ -14,6 +11,7 @@ function httpsGet(url) {
         'Accept': 'application/json, text/plain, */*',
         'Accept-Language': 'no-NO,no;q=0.9',
         'Referer': 'https://www.finn.no/',
+        'Origin': 'https://www.finn.no',
       }
     }, (res) => {
       let body = '';
@@ -24,6 +22,13 @@ function httpsGet(url) {
     req.setTimeout(15000, () => { req.destroy(); reject(new Error('Timeout')); });
   });
 }
+
+// Prøv flere kjente Finn-endepunkter i rekkefølge
+const FINN_ENDPOINTS = [
+  (params) => `https://www.finn.no/api/search-qf?${params}`,
+  (params) => `https://www.finn.no/api/search?${params}`,
+  (params) => `https://www.finn.no/boat/used/search.json?${params}`,
+];
 
 router.get('/', async (req, res) => {
   try {
@@ -46,18 +51,32 @@ router.get('/', async (req, res) => {
       page: '1',
     });
 
-    const url = `https://www.finn.no/api/search-qf?${params}`;
-    console.log('Finn proxy:', url);
+    for (const buildUrl of FINN_ENDPOINTS) {
+      const url = buildUrl(params);
+      console.log('Finn prøver:', url);
 
-    const { status, body } = await httpsGet(url);
+      const { status, body } = await httpsGet(url);
+      console.log('Finn svar:', status, body.substring(0, 80));
 
-    if (status !== 200) {
-      console.warn('Finn svarte:', status, body.substring(0, 100));
-      return res.status(status).json({ error: `Finn svarte med ${status}`, docs: [] });
+      if (status === 404) continue; // prøv neste endepunkt
+      if (status === 403) {
+        // Railway IP blokkert
+        return res.status(403).json({ error: 'Finn.no blokkerer Railway sin IP', docs: [] });
+      }
+
+      try {
+        const data = JSON.parse(body);
+        const docs = data?.docs || data?.response?.docs || [];
+        console.log(`Finn: ${docs.length} annonser funnet`);
+        return res.json(data);
+      } catch (e) {
+        console.warn('Finn: ikke JSON, status', status);
+        continue;
+      }
     }
 
-    const data = JSON.parse(body);
-    res.json(data);
+    // Alle endepunkter feilet
+    res.status(404).json({ error: 'Finn.no API ikke tilgjengelig', docs: [] });
   } catch (err) {
     console.error('Finn proxy feil:', err.message);
     res.status(500).json({ error: err.message, docs: [] });
