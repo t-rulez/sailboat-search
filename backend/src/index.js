@@ -32,6 +32,7 @@ app.use((req, _res, next) => {
 app.get('/health', (_req, res) => res.json({ ok: true, ts: new Date().toISOString() }));
 
 app.use('/api/search',    require('./routes/search'));
+app.use('/api/finn',      require('./routes/finn'));
 app.use('/api/listings',  require('./routes/listings'));
 app.use('/api/favorites', require('./routes/favorites'));
 

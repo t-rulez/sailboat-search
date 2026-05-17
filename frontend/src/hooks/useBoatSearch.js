@@ -2,26 +2,6 @@ import { useState, useCallback } from 'react';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
-// Finn.no søke-API – kalles direkte fra nettleseren (ingen CORS-blokkering)
-const FINN_API = 'https://www.finn.no/api/search-qf';
-
-function buildFinnUrl({ brand, yearMin, priceMin, priceMax, sizeMin, sizeMax }) {
-  const q = ['katamaran', brand].filter(Boolean).join(' ');
-  const params = new URLSearchParams({
-    searchkey: 'BOAT_USED',
-    q,
-    price_from:        priceMin  || '',
-    price_to:          priceMax  || '',
-    year_from:         yearMin   || '',
-    boat_length_from:  sizeMin   || '',
-    boat_length_to:    sizeMax   || '',
-    sort: '1',
-    rows: '48',
-    page: '1',
-  });
-  return `${FINN_API}?${params}`;
-}
-
 function parseFinnDoc(doc) {
   const priceRaw = doc.price?.amount ?? doc.price ?? null;
   const price = typeof priceRaw === 'object' ? priceRaw?.amount : priceRaw;
@@ -44,7 +24,6 @@ function parseFinnDoc(doc) {
   };
 }
 
-// Send resultater til backend for lagring
 async function importToBackend(listings) {
   if (!listings.length) return;
   try {
@@ -59,10 +38,10 @@ async function importToBackend(listings) {
 }
 
 export function useBoatSearch() {
-  const [results, setResults]     = useState([]);
-  const [loading, setLoading]     = useState(false);
-  const [error, setError]         = useState(null);
-  const [totalCount, setTotalCount] = useState(0);
+  const [results, setResults]               = useState([]);
+  const [loading, setLoading]               = useState(false);
+  const [error, setError]                   = useState(null);
+  const [totalCount, setTotalCount]         = useState(0);
   const [lastSearchParams, setLastSearchParams] = useState(null);
 
   const search = useCallback(async (params, extra = {}) => {
@@ -70,22 +49,22 @@ export function useBoatSearch() {
     setError(null);
     setLastSearchParams(params);
 
-    // Har vi filtre som ikke Finn kan håndtere, hent fra DB i stedet
-    const useDb = extra.favoritesOnly || extra.source !== 'all' && extra.source !== 'finn';
+    // DB-søk for favoritter eller kilde-filter
+    const useDb = extra.favoritesOnly || (extra.source && extra.source !== 'all' && extra.source !== 'finn');
 
     if (useDb) {
       try {
         const query = new URLSearchParams({
-          brand:    params.brand    || '',
-          yearMin:  params.yearMin  || '',
-          priceMin: params.priceMin || '',
-          priceMax: params.priceMax || '',
-          sizeMin:  params.sizeMin  || '',
-          sizeMax:  params.sizeMax  || '',
-          sort:   extra.sort   || 'price_nok',
-          dir:    extra.dir    || 'asc',
-          status: extra.status || 'active',
-          source: extra.source || 'all',
+          brand:         params.brand    || '',
+          yearMin:       params.yearMin  || '',
+          priceMin:      params.priceMin || '',
+          priceMax:      params.priceMax || '',
+          sizeMin:       params.sizeMin  || '',
+          sizeMax:       params.sizeMax  || '',
+          sort:          extra.sort      || 'price_nok',
+          dir:           extra.dir       || 'asc',
+          status:        extra.status    || 'active',
+          source:        extra.source    || 'all',
           favoritesOnly: extra.favoritesOnly ? 'true' : 'false',
         });
         const res = await fetch(`${API_URL}/api/search?${query}`);
@@ -102,15 +81,22 @@ export function useBoatSearch() {
       return;
     }
 
-    // Søk direkte mot Finn.no fra nettleseren
+    // Finn-søk via Railway-proxy (unngår CORS)
     try {
-      const finnUrl = buildFinnUrl(params);
-      const res = await fetch(finnUrl, {
-        headers: { Accept: 'application/json' },
-        signal: AbortSignal.timeout(15000),
+      const query = new URLSearchParams({
+        brand:    params.brand    || '',
+        yearMin:  params.yearMin  || '',
+        priceMin: params.priceMin || '',
+        priceMax: params.priceMax || '',
+        sizeMin:  params.sizeMin  || '',
+        sizeMax:  params.sizeMax  || '',
       });
 
-      if (!res.ok) throw new Error(`Finn.no svarte med ${res.status}`);
+      const res = await fetch(`${API_URL}/api/finn?${query}`, {
+        signal: AbortSignal.timeout(20000),
+      });
+
+      if (!res.ok) throw new Error(`Proxy svarte med ${res.status}`);
 
       const data = await res.json();
       const docs = data?.docs || data?.response?.docs || [];
@@ -119,11 +105,11 @@ export function useBoatSearch() {
       setResults(listings);
       setTotalCount(data?.metadata?.result_size?.match_count || listings.length);
 
-      // Lagre i backend-DB i bakgrunnen
+      // Lagre i DB i bakgrunnen
       importToBackend(listings);
 
     } catch (err) {
-      setError(`Finn.no-søket feilet: ${err.message}`);
+      setError(`Søket feilet: ${err.message}`);
       setResults([]);
     } finally {
       setLoading(false);
