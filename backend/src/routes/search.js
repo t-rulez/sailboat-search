@@ -2,6 +2,40 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
+const https = require('https');
+
+// ─── GET /api/rates ──────────────────────────────────────
+// Proxy for valutakurser – unngår CORS-blokkering i nettleseren
+const ratesCache = { data: null, ts: 0 };
+
+router.get('/rates', async (req, res) => {
+  const CACHE_MS = 60 * 60 * 1000; // 1 time
+  if (ratesCache.data && Date.now() - ratesCache.ts < CACHE_MS) {
+    return res.json(ratesCache.data);
+  }
+  try {
+    const data = await new Promise((resolve, reject) => {
+      https.get('https://api.frankfurter.app/latest?from=NOK&to=SEK,DKK,USD,EUR', (r) => {
+        let body = '';
+        r.on('data', (c) => body += c);
+        r.on('end', () => resolve(JSON.parse(body)));
+      }).on('error', reject);
+    });
+    const rates = {
+      SEK: 1 / data.rates.SEK,
+      DKK: 1 / data.rates.DKK,
+      USD: 1 / data.rates.USD,
+      EUR: 1 / data.rates.EUR,
+    };
+    ratesCache.data = rates;
+    ratesCache.ts = Date.now();
+    res.json(rates);
+  } catch (e) {
+    console.error('Valuta feilet:', e.message);
+    // Fallback-kurser
+    res.json({ SEK: 0.098, DKK: 0.148, USD: 10.5, EUR: 11.8 });
+  }
+});
 
 // ─── GET /api/search ─────────────────────────────────────
 // Hent lagrede annonser fra DB med filtre
