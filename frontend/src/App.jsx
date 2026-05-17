@@ -27,7 +27,7 @@ function loadSavedParams() {
 }
 
 export default function App() {
-  const { results, loading, error, search, totalCount } = useBoatSearch();
+  const { results, loading, error, search, totalCount, lastSearchParams } = useBoatSearch();
   const { toggle: toggleFav } = useFavorites();
 
   const [tab, setTab]         = useState('search'); // 'search' | 'favorites'
