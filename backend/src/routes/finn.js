@@ -112,6 +112,7 @@ router.get('/', async (req, res) => {
 
     // Hent side 1 og finn antall sider
     const url1 = buildUrl({ q, priceMin, priceMax, yearMin, page: 1 });
+    console.log('Finn søkeparametere:', { q, priceMin, priceMax, yearMin, sizeMin, sizeMax });
     console.log('Finn side 1:', url1);
     const { status, body: body1 } = await httpsGet(url1);
 

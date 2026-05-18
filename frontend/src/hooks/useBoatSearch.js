@@ -2,28 +2,15 @@ import { useState, useCallback } from 'react';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
-function parseFinnDoc(doc) {
-  const priceRaw = doc.price?.amount ?? doc.price ?? null;
-  const price = typeof priceRaw === 'object' ? priceRaw?.amount : priceRaw;
-  const lengthRaw = doc.boat_length ?? doc.length ?? null;
-  return {
-    source: 'finn',
-    external_id: String(doc.finnkode || doc.id || ''),
-    url: doc.canonical_url || `https://www.finn.no/boat/used/ad.html?finnkode=${doc.finnkode}`,
-    title: doc.heading || doc.main_search_heading || 'Ukjent',
-    brand: doc.make || doc.brand || null,
-    boat_type: 'katamaran',
-    price_nok: price ? Math.round(price) : null,
-    price_original: price ? Math.round(price) : null,
-    currency: 'NOK',
-    year: doc.year || doc.model_year || null,
-    length_ft: lengthRaw ? parseFloat(lengthRaw) : null,
-    image_url: doc.main_search_image?.url || doc.image?.url || null,
-    location: doc.location || null,
-    status: 'active',
-  };
+// Slå sammen Finn-resultater med favorittinfo fra DB
+function mergeFavorites(listings, favoriteIds) {
+  return listings.map(l => ({
+    ...l,
+    is_favorite: favoriteIds.has(`${l.source}:${l.external_id}`),
+  }));
 }
 
+// Send resultater til backend for lagring
 async function importToBackend(listings) {
   if (!listings.length) return;
   try {
@@ -38,51 +25,19 @@ async function importToBackend(listings) {
 }
 
 export function useBoatSearch() {
-  const [results, setResults]               = useState([]);
-  const [loading, setLoading]               = useState(false);
-  const [error, setError]                   = useState(null);
-  const [totalCount, setTotalCount]         = useState(0);
+  const [results, setResults]                   = useState([]);
+  const [loading, setLoading]                   = useState(false);
+  const [error, setError]                       = useState(null);
+  const [totalCount, setTotalCount]             = useState(0);
   const [lastSearchParams, setLastSearchParams] = useState(null);
 
-  const search = useCallback(async (params, extra = {}) => {
+  const search = useCallback(async (params) => {
     setLoading(true);
     setError(null);
     setLastSearchParams(params);
 
-    // DB-søk for favoritter eller kilde-filter
-    const useDb = extra.favoritesOnly || (extra.source && extra.source !== 'all' && extra.source !== 'finn');
-
-    if (useDb) {
-      try {
-        const query = new URLSearchParams({
-          brand:         params.brand    || '',
-          yearMin:       params.yearMin  || '',
-          priceMin:      params.priceMin || '',
-          priceMax:      params.priceMax || '',
-          sizeMin:       params.sizeMin  || '',
-          sizeMax:       params.sizeMax  || '',
-          sort:          extra.sort      || 'price_nok',
-          dir:           extra.dir       || 'asc',
-          status:        extra.status    || 'active',
-          source:        extra.source    || 'all',
-          favoritesOnly: extra.favoritesOnly ? 'true' : 'false',
-        });
-        const res = await fetch(`${API_URL}/api/search?${query}`);
-        if (!res.ok) throw new Error(`Server svarte ${res.status}`);
-        const data = await res.json();
-        setResults(data.listings || []);
-        setTotalCount(data.count || 0);
-      } catch (err) {
-        setError(err.message);
-        setResults([]);
-      } finally {
-        setLoading(false);
-      }
-      return;
-    }
-
-    // Finn-søk via Railway-proxy (unngår CORS)
     try {
+      // Hent Finn-resultater og favorittliste parallelt
       const query = new URLSearchParams({
         brand:    params.brand    || '',
         yearMin:  params.yearMin  || '',
@@ -92,18 +47,28 @@ export function useBoatSearch() {
         sizeMax:  params.sizeMax  || '',
       });
 
-      const res = await fetch(`${API_URL}/api/finn?${query}`, {
-        signal: AbortSignal.timeout(20000),
-      });
+      const [finnRes, favRes] = await Promise.all([
+        fetch(`${API_URL}/api/finn?${query}`, { signal: AbortSignal.timeout(30000) }),
+        fetch(`${API_URL}/api/favorites`).catch(() => null),
+      ]);
 
-      if (!res.ok) throw new Error(`Proxy svarte med ${res.status}`);
+      if (!finnRes.ok) throw new Error(`Proxy svarte med ${finnRes.status}`);
 
-      const data = await res.json();
-      // Finn returnerer nå pre-parsede docs direkte fra backend
-      const listings = (data?.docs || []).filter((d) => d.external_id);
+      const finnData = await finnRes.json();
+      const listings = finnData?.docs || [];
 
-      setResults(listings);
-      setTotalCount(listings.length);
+      // Bygg opp et sett med favoritt-nøkler
+      let favoriteIds = new Set();
+      if (favRes?.ok) {
+        const favData = await favRes.json();
+        favoriteIds = new Set(
+          (favData.listings || []).map(f => `${f.source}:${f.external_id}`)
+        );
+      }
+
+      const merged = mergeFavorites(listings, favoriteIds);
+      setResults(merged);
+      setTotalCount(merged.length);
 
       // Lagre i DB i bakgrunnen
       importToBackend(listings);
@@ -116,5 +81,14 @@ export function useBoatSearch() {
     }
   }, []);
 
-  return { results, loading, error, search, lastSearchParams, totalCount };
+  // Oppdater favoritt-status på ett resultat uten nytt søk
+  const updateFavorite = useCallback((source, external_id, isFavorite) => {
+    setResults(prev => prev.map(r =>
+      r.source === source && r.external_id === external_id
+        ? { ...r, is_favorite: isFavorite }
+        : r
+    ));
+  }, []);
+
+  return { results, loading, error, search, lastSearchParams, totalCount, updateFavorite };
 }
