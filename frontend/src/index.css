@@ -338,6 +338,7 @@ h1, h2, h3 {
   transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
   display: flex;
   flex-direction: column;
+  position: relative;
 }
 
 .boat-card:hover {

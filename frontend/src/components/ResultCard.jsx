@@ -68,16 +68,16 @@ export default function ResultCard({ boat, onToggleFavorite }) {
             <StatusBadge status={boat.status} />
           </div>
         )}
-
-        {/* Favoritt-hjerte */}
-        <button
-          className={`fav-btn ${boat.is_favorite ? 'fav-btn-active' : ''}`}
-          onClick={(e) => { e.preventDefault(); onToggleFavorite(boat); }}
-          title={boat.is_favorite ? 'Fjern favoritt' : 'Legg til favoritt'}
-        >
-          <Heart size={16} fill={boat.is_favorite ? 'currentColor' : 'none'} />
-        </button>
       </div>
+
+      {/* Favoritt-hjerte – utenfor bildet så overflow:hidden ikke skjuler det */}
+      <button
+        className={`fav-btn ${boat.is_favorite ? 'fav-btn-active' : ''}`}
+        onClick={(e) => { e.preventDefault(); onToggleFavorite(boat); }}
+        title={boat.is_favorite ? 'Fjern favoritt' : 'Legg til favoritt'}
+      >
+        <Heart size={16} fill={boat.is_favorite ? 'currentColor' : 'none'} />
+      </button>
 
       {/* Info */}
       <div className="boat-info">
