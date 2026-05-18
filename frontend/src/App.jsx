@@ -174,7 +174,12 @@ export default function App() {
           )}
           {!favLoading && favorites.length > 0 && (
             <ResultList
-              results={favorites}
+              results={[...favorites].sort((a, b) => {
+                const av = a[sortKey] ?? (sortDir === 'asc' ? Infinity : -Infinity);
+                const bv = b[sortKey] ?? (sortDir === 'asc' ? Infinity : -Infinity);
+                if (typeof av === 'string') return sortDir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
+                return sortDir === 'asc' ? av - bv : bv - av;
+              })}
               totalCount={favorites.length}
               onToggleFavorite={handleToggleFavorite}
               onSortChange={handleSortChange}
