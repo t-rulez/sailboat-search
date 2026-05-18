@@ -643,11 +643,13 @@ h1, h2, h3 {
 
 /* ─── Tab divider ─── */
 .tab-divider {
+  display: inline-block;
   width: 1px;
-  height: 28px;
+  height: 20px;
   background: rgba(232, 213, 176, 0.2);
-  margin: 0 0.25rem;
+  margin: 0 0.5rem;
   align-self: center;
+  flex-shrink: 0;
 }
 
 /* ─── Katamaran-ikon under filtrer-knapp ─── */
