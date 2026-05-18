@@ -35,6 +35,7 @@ export default function App() {
   const [hasSearched, setHasSearched] = useState(false);
   const [sortKey, setSortKey]       = useState('first_seen_at');
   const [sortDir, setSortDir]       = useState('desc');
+  const [source, setSource]         = useState('all');
   const [searchParams, setSearchParams] = useState(loadSavedParams());
 
   const [favorites, setFavorites]   = useState([]);
@@ -61,13 +62,19 @@ export default function App() {
     setHasSearched(false);
   }, []);
 
-  const handleSearch = useCallback((params) => {
+  const handleSearch = useCallback((params, src) => {
+    const s = src !== undefined ? src : source;
     setSearchParams(params);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(params));
     setHasSearched(true);
     setTab('search');
-    search(params);
-  }, [search]);
+    search(params, s);
+  }, [search, source]);
+
+  const handleSourceChange = useCallback((s) => {
+    setSource(s);
+    if (hasSearched) search(searchParams, s);
+  }, [search, searchParams, hasSearched]);
 
   const handleToggleFavorite = useCallback(async (boat) => {
     const newVal = await toggleFav(boat);
@@ -131,6 +138,25 @@ export default function App() {
             loading={loading}
             initialParams={searchParams}
           />
+
+          {/* Kilde-filter */}
+          <div className="source-filter">
+            {[
+              { key: 'all',        label: 'Alle kilder' },
+              { key: 'finn',       label: '🇳🇴 Finn.no' },
+              { key: 'blocket',    label: '🇸🇪 Blocket.se' },
+              { key: 'yachtworld', label: '🌍 Yachtworld' },
+              { key: 'boat24',     label: '🌍 Boat24' },
+            ].map(s => (
+              <button
+                key={s.key}
+                className={`source-filter-btn ${source === s.key ? 'source-filter-btn-active' : ''}`}
+                onClick={() => handleSourceChange(s.key)}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
 
           {error && (
             <div className="error-banner">⚠️ {error}</div>

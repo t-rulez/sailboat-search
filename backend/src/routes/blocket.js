@@ -33,7 +33,7 @@ function buildUrl({ q, priceMinSEK, priceMaxSEK, yearMin, sizeMin, sizeMax, page
   const params = new URLSearchParams({ q, class: '2188' });
   if (priceMinSEK) params.set('price_from', priceMinSEK);
   if (priceMaxSEK) params.set('price_to', priceMaxSEK);
-  if (yearMin)     params.set('year_from', yearMin);
+  // Blocket støtter ikke year_from i søket
   if (sizeMin)     params.set('length_feet_from', sizeMin);
   if (sizeMax)     params.set('length_feet_to', sizeMax);
   if (page > 1)    params.set('page', page);

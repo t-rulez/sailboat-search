@@ -1,4 +1,4 @@
-import { ExternalLink, Calendar, Ruler, Banknote, Tag, Heart, TrendingDown, TrendingUp, Clock } from 'lucide-react';
+import { ExternalLink, Calendar, Banknote, Tag, Heart, TrendingDown, TrendingUp, Clock } from 'lucide-react';
 import StatusBadge from './StatusBadge';
 
 const SOURCE_LABELS = {
@@ -13,12 +13,6 @@ function formatNOK(amount) {
   return new Intl.NumberFormat('nb-NO', {
     style: 'currency', currency: 'NOK', maximumFractionDigits: 0,
   }).format(amount);
-}
-
-function FotMeter({ ft }) {
-  if (!ft) return <span>—</span>;
-  const m = (ft * 0.3048).toFixed(1);
-  return <span>{ft} fot <span className="meta-secondary">/ {m} m</span></span>;
 }
 
 function PriceChange({ currentPrice, initialPrice }) {
@@ -101,12 +95,7 @@ export default function ResultCard({ boat, onToggleFavorite }) {
           </div>
 
           {/* Størrelse */}
-          <div className="meta-item">
-            <Ruler size={14} className="meta-icon" />
-            <span className="meta-value"><FotMeter ft={boat.length_ft} /></span>
-          </div>
-
-          {/* Merke */}
+{/* Merke */}
           {boat.brand && (
             <div className="meta-item">
               <Tag size={14} className="meta-icon" />

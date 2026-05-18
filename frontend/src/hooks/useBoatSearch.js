@@ -31,7 +31,7 @@ export function useBoatSearch() {
   const [totalCount, setTotalCount]             = useState(0);
   const [lastSearchParams, setLastSearchParams] = useState(null);
 
-  const search = useCallback(async (params) => {
+  const search = useCallback(async (params, source = 'all') => {
     setLoading(true);
     setError(null);
     setLastSearchParams(params);
@@ -47,16 +47,25 @@ export function useBoatSearch() {
         sizeMax:  params.sizeMax  || '',
       });
 
+      const shouldFetch = (src) => source === 'all' || source === src;
+
       const [finnRes, blocketRes, favRes] = await Promise.all([
-        fetch(`${API_URL}/api/finn?${query}`, { signal: AbortSignal.timeout(30000) }),
-        fetch(`${API_URL}/api/blocket?${query}`, { signal: AbortSignal.timeout(30000) }).catch(() => null),
+        shouldFetch('finn')
+          ? fetch(`${API_URL}/api/finn?${query}`, { signal: AbortSignal.timeout(30000) })
+          : Promise.resolve(null),
+        shouldFetch('blocket')
+          ? fetch(`${API_URL}/api/blocket?${query}`, { signal: AbortSignal.timeout(30000) }).catch(() => null)
+          : Promise.resolve(null),
         fetch(`${API_URL}/api/favorites`).catch(() => null),
       ]);
 
-      if (!finnRes.ok) throw new Error(`Proxy svarte med ${finnRes.status}`);
-
-      const finnData = await finnRes.json();
-      const finnDocs = finnData?.docs || [];
+      let finnDocs = [];
+      if (finnRes?.ok) {
+        const finnData = await finnRes.json();
+        finnDocs = finnData?.docs || [];
+      } else if (finnRes && !finnRes.ok) {
+        throw new Error(`Finn svarte med ${finnRes.status}`);
+      }
 
       let blocketDocs = [];
       if (blocketRes?.ok) {
