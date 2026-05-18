@@ -1,4 +1,4 @@
-import { ExternalLink, Calendar, Banknote, Tag, Heart, TrendingDown, TrendingUp, Clock } from 'lucide-react';
+import { Calendar, Banknote, Tag, Heart, TrendingDown, TrendingUp, Clock } from 'lucide-react';
 import StatusBadge from './StatusBadge';
 
 const SOURCE_LABELS = {
@@ -123,11 +123,9 @@ export default function ResultCard({ boat, onToggleFavorite }) {
 
         <a
           href={boat.url}
-          target="_blank"
-          rel="noopener noreferrer"
           className="view-btn"
         >
-          Se annonsen <ExternalLink size={14} />
+          Se annonsen
         </a>
       </div>
     </article>
