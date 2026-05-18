@@ -837,3 +837,20 @@ h1, h2, h3 {
   background: #0d1f3c;
   color: var(--rope-300);
 }
+
+/* ─── Header title row med katamaran-ikon ─── */
+.header-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.header-cat-icon {
+  flex-shrink: 0;
+  opacity: 0.75;
+}
+
+.header-cat-icon svg {
+  width: 52px;
+  height: auto;
+}
