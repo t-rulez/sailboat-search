@@ -123,6 +123,8 @@ export default function ResultCard({ boat, onToggleFavorite }) {
 
         <a
           href={boat.url}
+          target={boat.source === 'finn' ? '_blank' : undefined}
+          rel={boat.source === 'finn' ? 'noopener noreferrer' : undefined}
           className="view-btn"
         >
           Se annonsen
