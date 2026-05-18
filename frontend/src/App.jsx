@@ -139,25 +139,6 @@ export default function App() {
             initialParams={searchParams}
           />
 
-          {/* Kilde-filter */}
-          <div className="source-filter">
-            {[
-              { key: 'all',        label: 'Alle kilder' },
-              { key: 'finn',       label: '🇳🇴 Finn.no' },
-              { key: 'blocket',    label: '🇸🇪 Blocket.se' },
-              { key: 'yachtworld', label: '🌍 Yachtworld' },
-              { key: 'boat24',     label: '🌍 Boat24' },
-            ].map(s => (
-              <button
-                key={s.key}
-                className={`source-filter-btn ${source === s.key ? 'source-filter-btn-active' : ''}`}
-                onClick={() => handleSourceChange(s.key)}
-              >
-                {s.label}
-              </button>
-            ))}
-          </div>
-
           {error && (
             <div className="error-banner">⚠️ {error}</div>
           )}
@@ -176,6 +157,8 @@ export default function App() {
             onSortChange={handleSortChange}
             sortKey={sortKey}
             sortDir={sortDir}
+            source={source}
+            onSourceChange={handleSourceChange}
           />
 
           {hasSearched && <ExternalLinks params={lastSearchParams} />}
