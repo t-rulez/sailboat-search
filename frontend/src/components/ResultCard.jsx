@@ -39,7 +39,7 @@ function CommentModal({ boat, onClose, onSave }) {
     setSaving(true);
     try {
       const res = await fetch(
-        `${API_URL}/api/listings/${boat.source}/${boat.external_id}/comment`,
+        `${API_URL}/api/listings/comment/${boat.source}/${boat.external_id}`,
         {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
