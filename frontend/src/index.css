@@ -876,7 +876,7 @@ h1, h2, h3 {
 }
 
 .comment-btn:hover { border-color: #5b9bd5; color: #5b9bd5; }
-.comment-btn-active { color: #5b9bd5; border-color: rgba(91, 155, 213, 0.6); background: rgba(91, 155, 213, 0.12); }
+.comment-btn-active { color: #5b9bd5; border-color: rgba(91, 155, 213, 0.6); }
 
 /* ─── Kommentar-visning ─── */
 .comment-display {
