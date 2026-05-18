@@ -60,20 +60,9 @@ h1, h2, h3 {
 
 /* ─── Header ─── */
 .app-header {
-  padding: 3.5rem 0 1.5rem;
-  border-bottom: 1px solid rgba(232, 213, 176, 0.12);
-  margin-bottom: 2rem;
+  padding: 3.5rem 0 0.5rem;
+  margin-bottom: 1.5rem;
   position: relative;
-}
-
-.app-header::before {
-  content: '';
-  position: absolute;
-  bottom: -1px;
-  left: 0;
-  width: 80px;
-  height: 1px;
-  background: linear-gradient(90deg, var(--gold), transparent);
 }
 
 .header-eyebrow {

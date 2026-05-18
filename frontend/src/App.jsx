@@ -102,7 +102,6 @@ export default function App() {
       <header className="app-header">
         <p className="header-eyebrow">⚓ Katamaran</p>
         <h1 className="app-title">Katamaran langtur 2029</h1>
-        <p className="app-subtitle">Søker i hele Norden</p>
       </header>
 
       {/* Infobanner */}
