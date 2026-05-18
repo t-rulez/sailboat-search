@@ -171,7 +171,7 @@ export default function App() {
             onSourceChange={handleSourceChange}
           />
 
-          {hasSearched && <ExternalLinks params={lastSearchParams} />}
+          <ExternalLinks params={lastSearchParams || searchParams} />
         </>
       )}
 

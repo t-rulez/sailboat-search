@@ -166,17 +166,6 @@ export default function SearchForm({ onSearch, onReset, loading, initialParams }
         </button>
       </div>
 
-      {/* Katamaran-ikon */}
-      <div className="catamaran-icon">
-        <svg viewBox="0 0 100 60" xmlns="http://www.w3.org/2000/svg">
-          <path d="M2,44 Q10,52 28,52 L28,46 Q12,46 6,40 Z" fill="#d4b896"/>
-          <path d="M72,44 Q80,52 98,52 L94,40 Q86,46 72,46 Z" fill="#d4b896"/>
-          <rect x="24" y="36" width="52" height="5" rx="2" fill="#c09a6a"/>
-          <line x1="50" y1="4" x2="50" y2="38" stroke="#e8d5b0" stroke-width="2"/>
-          <polygon points="50,6 50,38 74,38" fill="#e8d5b0" opacity="0.85"/>
-          <polygon points="50,14 50,38 28,38" fill="#c09a6a" opacity="0.8"/>
-        </svg>
-      </div>
 
     </div>
   );
