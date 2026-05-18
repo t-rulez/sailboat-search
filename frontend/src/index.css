@@ -718,3 +718,26 @@ h1, h2, h3 {
   border-color: rgba(232, 213, 176, 0.3);
   color: var(--rope-300);
 }
+
+/* ─── Favoritt-knapp ─── */
+.fav-btn {
+  position: absolute;
+  top: 1.6rem;
+  right: 0.9rem;
+  z-index: 20;
+  background: rgba(5, 13, 26, 0.75);
+  backdrop-filter: blur(6px);
+  border: 1px solid rgba(232, 213, 176, 0.2);
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.fav-btn:hover { border-color: #e05c7a; color: #e05c7a; }
+.fav-btn-active { color: #e05c7a; border-color: rgba(224, 92, 122, 0.5); }
