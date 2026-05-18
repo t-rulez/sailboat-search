@@ -57,6 +57,10 @@ export default function App() {
     fetchFavorites().catch(() => {});
   }, []);
 
+  const handleReset = useCallback(() => {
+    setHasSearched(false);
+  }, []);
+
   const handleSearch = useCallback((params) => {
     setSearchParams(params);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(params));
@@ -123,6 +127,7 @@ export default function App() {
         <>
           <SearchForm
             onSearch={handleSearch}
+            onReset={handleReset}
             loading={loading}
             initialParams={searchParams}
           />

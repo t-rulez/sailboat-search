@@ -66,7 +66,10 @@ export function useBoatSearch() {
         );
       }
 
-      const merged = mergeFavorites(listings, favoriteIds);
+      // Legg til first_seen_at (dagens dato) på alle Finn-resultater
+      const today = new Date().toISOString();
+      const withDate = listings.map(l => ({ ...l, first_seen_at: l.first_seen_at || today }));
+      const merged = mergeFavorites(withDate, favoriteIds);
       setResults(merged);
       setTotalCount(merged.length);
 

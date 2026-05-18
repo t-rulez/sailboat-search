@@ -10,6 +10,15 @@ const DEFAULT_PARAMS = {
   sizeMax: 42,
 };
 
+const EMPTY_PARAMS = {
+  brand: '',
+  yearMin: '',
+  priceMin: '',
+  priceMax: '',
+  sizeMin: '',
+  sizeMax: '',
+};
+
 function formatMillions(val) {
   if (val === '' || val === null || val === undefined) return '—';
   if (val >= 1000000) return `${(val / 1000000).toFixed(1).replace('.', ',')} mill`;
@@ -40,12 +49,15 @@ function ClearableInput({ label, sublabel, value, onChange, onClear, type = 'num
   );
 }
 
-export default function SearchForm({ onSearch, loading, initialParams }) {
+export default function SearchForm({ onSearch, onReset, loading, initialParams }) {
   const [params, setParams] = useState({ ...DEFAULT_PARAMS, ...initialParams });
   const update = (key, val) => setParams((p) => ({ ...p, [key]: val }));
   const clear  = (key) => setParams((p) => ({ ...p, [key]: '' }));
 
-  const handleReset = () => setParams(DEFAULT_PARAMS);
+  const handleReset = () => {
+    setParams(EMPTY_PARAMS);
+    if (onReset) onReset();
+  };
 
   const parseNum = (val) => val === '' ? '' : parseInt(val) || '';
 
