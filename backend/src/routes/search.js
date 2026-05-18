@@ -51,6 +51,7 @@ router.post('/import', async (req, res) => {
     }
 
     let inserted = 0, updated = 0, priceChanges = 0;
+    const dates = {}; // external_id -> first_seen_at
 
     for (const listing of listings) {
       const {
@@ -85,9 +86,11 @@ router.post('/import', async (req, res) => {
             [result.rows[0].id, price_nok]
           );
         }
+        dates[external_id] = new Date().toISOString();
         inserted++;
       } else {
         const row = existing.rows[0];
+        dates[external_id] = row.first_seen_at;
         const priceChanged = price_nok && row.price_nok !== price_nok;
         await db.query(
           `UPDATE listings SET
@@ -113,7 +116,7 @@ router.post('/import', async (req, res) => {
     }
 
     console.log(`Import: ${inserted} nye, ${updated} oppdatert, ${priceChanges} prisendringer`);
-    res.json({ ok: true, inserted, updated, priceChanges });
+    res.json({ ok: true, inserted, updated, priceChanges, dates });
   } catch (err) {
     console.error('Import error:', err);
     res.status(500).json({ error: err.message });

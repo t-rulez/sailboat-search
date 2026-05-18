@@ -12,16 +12,21 @@ function mergeFavorites(listings, favoriteIds) {
 
 // Send resultater til backend for lagring
 async function importToBackend(listings) {
-  if (!listings.length) return;
+  if (!listings.length) return {};
   try {
-    await fetch(`${API_URL}/api/search/import`, {
+    const res = await fetch(`${API_URL}/api/search/import`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ listings }),
     });
+    if (res.ok) {
+      const data = await res.json();
+      return data.dates || {};
+    }
   } catch (e) {
     console.warn('Import til backend feilet:', e.message);
   }
+  return {};
 }
 
 export function useBoatSearch() {
@@ -84,15 +89,18 @@ export function useBoatSearch() {
         );
       }
 
-      // Legg til first_seen_at (dagens dato) på alle Finn-resultater
-      const today = new Date().toISOString();
-      const withDate = listings.map(l => ({ ...l, first_seen_at: l.first_seen_at || today }));
-      const merged = mergeFavorites(withDate, favoriteIds);
+      const merged = mergeFavorites(listings, favoriteIds);
       setResults(merged);
       setTotalCount(merged.length);
 
-      // Lagre i DB i bakgrunnen
-      importToBackend(listings);
+      // Lagre i DB og hent first_seen_at per annonse
+      importToBackend(listings).then(dates => {
+        const today = new Date().toISOString();
+        setResults(prev => prev.map(l => ({
+          ...l,
+          first_seen_at: dates[l.external_id] || l.first_seen_at || today,
+        })));
+      });
 
     } catch (err) {
       setError(`Søket feilet: ${err.message}`);
