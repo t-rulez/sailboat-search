@@ -18,14 +18,16 @@ CREATE TABLE IF NOT EXISTS listings (
   location         VARCHAR(200),
   status           VARCHAR(20)  DEFAULT 'active',
   is_favorite      BOOLEAN      DEFAULT false,
+  comment          TEXT         DEFAULT NULL,
   first_seen_at    TIMESTAMPTZ  DEFAULT NOW(),
   last_checked_at  TIMESTAMPTZ  DEFAULT NOW(),
   last_changed_at  TIMESTAMPTZ  DEFAULT NOW(),
   UNIQUE(source, external_id)
 );
 
--- Legg til is_favorite hvis tabellen allerede eksisterer
+-- Legg til kolonner hvis tabellen allerede eksisterer
 ALTER TABLE listings ADD COLUMN IF NOT EXISTS is_favorite BOOLEAN DEFAULT false;
+ALTER TABLE listings ADD COLUMN IF NOT EXISTS comment TEXT DEFAULT NULL;
 
 CREATE TABLE IF NOT EXISTS price_history (
   id          SERIAL PRIMARY KEY,

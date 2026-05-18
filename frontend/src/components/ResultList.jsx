@@ -15,7 +15,7 @@ const SOURCE_OPTIONS = [
   { key: 'boat24',     label: '🌍 Boat24' },
 ];
 
-export default function ResultList({ results, totalCount, onToggleFavorite, onSortChange, sortKey, sortDir, source, onSourceChange }) {
+export default function ResultList({ results, totalCount, onToggleFavorite, onSortChange, sortKey, sortDir, source, onSourceChange, showComment = false }) {
   const handleSort = (key) => {
     if (sortKey === key) {
       onSortChange(key, sortDir === 'asc' ? 'desc' : 'asc');
@@ -70,6 +70,7 @@ export default function ResultList({ results, totalCount, onToggleFavorite, onSo
             key={`${boat.source}-${boat.external_id}`}
             boat={boat}
             onToggleFavorite={onToggleFavorite}
+            showComment={showComment}
           />
         ))}
       </div>

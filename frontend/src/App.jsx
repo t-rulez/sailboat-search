@@ -204,6 +204,7 @@ export default function App() {
               onSortChange={handleSortChange}
               sortKey={sortKey}
               sortDir={sortDir}
+              showComment={true}
             />
           )}
         </>

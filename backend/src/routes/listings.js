@@ -34,4 +34,24 @@ router.get('/:id/price-history', async (req, res) => {
   }
 });
 
+// PUT /api/listings/:source/:external_id/comment
+router.put('/:source/:external_id/comment', async (req, res) => {
+  try {
+    const { source, external_id } = req.params;
+    const { comment } = req.body;
+    const result = await db.query(
+      `UPDATE listings SET comment = $3, last_changed_at = NOW()
+       WHERE source = $1 AND external_id = $2
+       RETURNING id, comment`,
+      [source, external_id, comment || null]
+    );
+    if (!result.rows.length) {
+      return res.status(404).json({ error: 'Annonse ikke funnet' });
+    }
+    res.json({ ok: true, comment: result.rows[0].comment });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
