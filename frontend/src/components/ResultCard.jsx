@@ -185,14 +185,18 @@ export default function ResultCard({ boat, onToggleFavorite, showComment = false
             </div>
           )}
 
-          <a
-            href={boat.url}
-            target={boat.source === 'finn' ? '_blank' : undefined}
-            rel={boat.source === 'finn' ? 'noopener noreferrer' : undefined}
-            className="view-btn"
-          >
-            Se annonsen
-          </a>
+          {boat.source === 'finn' ? (
+            <button
+              className="view-btn"
+              onClick={() => window.open(boat.url, '_blank', 'noopener,noreferrer')}
+            >
+              Se annonsen
+            </button>
+          ) : (
+            <a href={boat.url} className="view-btn">
+              Se annonsen
+            </a>
+          )}
         </div>
       </article>
 
