@@ -82,14 +82,17 @@ function parseTotalPages(html) {
   return match ? parseInt(match[1]) : 1;
 }
 
-function buildUrl({ q, priceMin, priceMax, yearMin, page = 1 }) {
-  const params = new URLSearchParams({ q, sales_form: '120', sales_form_2: '121', class: '2188' });
+function buildUrl({ q, priceMin, priceMax, yearMin, sizeMin, sizeMax, page = 1 }) {
+  // URLSearchParams deduplikerer nøkler, så vi bygger URL manuelt for sales_form
+  const params = new URLSearchParams({ q, class: '2188' });
   if (priceMin) params.set('price_from', priceMin);
   if (priceMax) params.set('price_to', priceMax);
   if (yearMin)  params.set('year_from', yearMin);
+  if (sizeMin)  params.set('length_feet_from', sizeMin);
+  if (sizeMax)  params.set('length_feet_to', sizeMax);
   if (page > 1) params.set('page', page);
-  // sales_form må sendes to ganger – URLSearchParams deduplikerer ikke
-  return `https://www.finn.no/mobility/search/boat?${params}&sales_form=121`;
+  // sales_form=120 (brukt) og sales_form=121 (ny) sendes som to separate parametere
+  return `https://www.finn.no/mobility/search/boat?${params}&sales_form=120&sales_form=121`;
 }
 
 // ─── GET /api/finn/debug ─────────────────────────────────
@@ -111,7 +114,7 @@ router.get('/', async (req, res) => {
     const allDocs = [];
 
     // Hent side 1 og finn antall sider
-    const url1 = buildUrl({ q, priceMin, priceMax, yearMin, page: 1 });
+    const url1 = buildUrl({ q, priceMin, priceMax, yearMin, sizeMin, sizeMax, page: 1 });
     console.log('Finn søkeparametere:', { q, priceMin, priceMax, yearMin, sizeMin, sizeMax });
     console.log('Finn side 1:', url1);
     const { status, body: body1 } = await httpsGet(url1);
@@ -129,7 +132,7 @@ router.get('/', async (req, res) => {
       const pageNums = Array.from({ length: maxPages - 1 }, (_, i) => i + 2);
       const pageResults = await Promise.all(
         pageNums.map(async (page) => {
-          const url = buildUrl({ q, priceMin, priceMax, yearMin, page });
+          const url = buildUrl({ q, priceMin, priceMax, yearMin, sizeMin, sizeMax, page });
           const { body } = await httpsGet(url);
           const docs = parseSeoStructuredData(body);
           console.log(`Finn side ${page}: ${docs.length} annonser`);
