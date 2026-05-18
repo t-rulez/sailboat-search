@@ -133,7 +133,7 @@ export default function ResultCard({ boat, onToggleFavorite, showComment = false
             onClick={(e) => { e.preventDefault(); setShowModal(true); }}
             title="Legg til notat"
           >
-            <MessageSquare size={14} />
+            <MessageSquare size={14} fill={comment ? '#5b9bd5' : 'none'} />
           </button>
         )}
 
