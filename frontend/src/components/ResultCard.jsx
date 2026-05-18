@@ -1,4 +1,4 @@
-import { ExternalLink, Calendar, Ruler, Banknote, Tag, Heart, TrendingDown, TrendingUp } from 'lucide-react';
+import { ExternalLink, Calendar, Ruler, Banknote, Tag, Heart, TrendingDown, TrendingUp, Clock } from 'lucide-react';
 import StatusBadge from './StatusBadge';
 
 const SOURCE_LABELS = {
@@ -119,6 +119,15 @@ export default function ResultCard({ boat, onToggleFavorite }) {
             <div className="meta-item meta-full">
               <span className="meta-icon">📍</span>
               <span className="meta-value meta-secondary">{boat.location}</span>
+            </div>
+          )}
+
+          {boat.last_changed_at && (
+            <div className="meta-item meta-full">
+              <Clock size={14} className="meta-icon" />
+              <span className="meta-value meta-secondary">
+                Oppdatert {new Date(boat.last_changed_at).toLocaleDateString('nb-NO')}
+              </span>
             </div>
           )}
         </div>

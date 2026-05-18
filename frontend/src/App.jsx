@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Heart } from 'lucide-react';
+import { Heart, Search } from 'lucide-react';
 import SearchForm from './components/SearchForm';
 import ResultList from './components/ResultList';
 import ExternalLinks from './components/ExternalLinks';
@@ -105,6 +105,7 @@ export default function App() {
           className={`app-tab ${tab === 'search' ? 'app-tab-active' : ''}`}
           onClick={() => setTab('search')}
         >
+          <Search size={14} />
           Søk
         </button>
         <div className="tab-divider" />
@@ -113,10 +114,7 @@ export default function App() {
           onClick={() => { setTab('favorites'); fetchFavorites(); }}
         >
           <Heart size={14} />
-          Favoritter
-          {favorites.length > 0 && (
-            <span className="fav-count">{favorites.length}</span>
-          )}
+          Favoritter{favorites.length > 0 && <span className="fav-count">({favorites.length})</span>}
         </button>
       </div>
 

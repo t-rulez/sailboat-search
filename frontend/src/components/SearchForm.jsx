@@ -25,7 +25,7 @@ export default function SearchForm({ onSearch, loading, initialParams }) {
       {/* Rad 1: Merke + Årsmodell */}
       <div className="form-row">
         <div className="field-group">
-          <label className="field-label">Båtmerke</label>
+          <label className="field-label">Søkeord</label>
           <input
             className="field-input"
             type="text"
