@@ -122,11 +122,11 @@ export default function ResultCard({ boat, onToggleFavorite }) {
             </div>
           )}
 
-          {boat.last_changed_at && (
+          {(boat.first_seen_at || boat.last_changed_at) && (
             <div className="meta-item meta-full">
               <Clock size={14} className="meta-icon" />
               <span className="meta-value meta-secondary">
-                Oppdatert {new Date(boat.last_changed_at).toLocaleDateString('nb-NO')}
+                Oppdaget {new Date(boat.first_seen_at || boat.last_changed_at).toLocaleDateString('nb-NO')}
               </span>
             </div>
           )}

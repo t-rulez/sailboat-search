@@ -33,8 +33,8 @@ export default function App() {
 
   const [tab, setTab]               = useState('search');
   const [hasSearched, setHasSearched] = useState(false);
-  const [sortKey, setSortKey]       = useState('price_nok');
-  const [sortDir, setSortDir]       = useState('asc');
+  const [sortKey, setSortKey]       = useState('first_seen_at');
+  const [sortDir, setSortDir]       = useState('desc');
   const [searchParams, setSearchParams] = useState(loadSavedParams());
 
   const [favorites, setFavorites]   = useState([]);

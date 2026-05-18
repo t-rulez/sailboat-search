@@ -2,6 +2,7 @@ import { ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import ResultCard from './ResultCard';
 
 const SORT_OPTIONS = [
+  { key: 'first_seen_at', label: 'Oppdaget' },
   { key: 'price_nok',     label: 'Pris' },
   { key: 'year',          label: 'Årsmodell' },
   { key: 'length_ft',     label: 'Størrelse' },
@@ -12,7 +13,8 @@ export default function ResultList({ results, totalCount, onToggleFavorite, onSo
     if (sortKey === key) {
       onSortChange(key, sortDir === 'asc' ? 'desc' : 'asc');
     } else {
-      onSortChange(key, 'asc');
+      // Oppdaget: nyeste først som default, resten stigende
+      onSortChange(key, key === 'first_seen_at' ? 'desc' : 'asc');
     }
   };
 
@@ -27,7 +29,6 @@ export default function ResultList({ results, totalCount, onToggleFavorite, onSo
         </div>
 
         <div className="sort-controls">
-          <span className="sort-label">Sorter:</span>
           {SORT_OPTIONS.map((opt) => {
             const active = sortKey === opt.key;
             return (
