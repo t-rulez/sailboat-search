@@ -28,7 +28,7 @@ function httpsGet(url) {
   });
 }
 
-// Alle kjente Finn søke-URL-varianter
+// Alle kjente Finn søke-URL-varianter.
 function buildCandidates(params) {
   return [
     // Nyeste format (2024-2025)
