@@ -875,8 +875,8 @@ h1, h2, h3 {
   transition: all 0.15s;
 }
 
-.comment-btn:hover { border-color: var(--gold); color: var(--gold); }
-.comment-btn-active { color: var(--gold); border-color: rgba(212, 160, 23, 0.5); }
+.comment-btn:hover { border-color: #5b9bd5; color: #5b9bd5; }
+.comment-btn-active { color: #5b9bd5; border-color: rgba(91, 155, 213, 0.6); background: rgba(91, 155, 213, 0.12); }
 
 /* ─── Kommentar-visning ─── */
 .comment-display {

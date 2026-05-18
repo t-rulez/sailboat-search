@@ -127,7 +127,7 @@ export default function App() {
           onClick={() => setTab('search')}
         >
           <Search size={14} />
-          Søk
+          Søk{results.length > 0 && <span className="fav-count">({results.length})</span>}
         </button>
         <div className="tab-divider" />
         <button
