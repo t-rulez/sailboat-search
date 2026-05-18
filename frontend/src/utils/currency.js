@@ -1,5 +1,5 @@
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-const FALLBACK_RATES = { SEK: 0.098, DKK: 0.148, USD: 10.5, EUR: 11.8 };
+const FALLBACK_RATES = { SEK: 0.98, DKK: 0.148, USD: 10.5, EUR: 11.8 };
 
 let cachedRates = null;
 let cacheTime = null;

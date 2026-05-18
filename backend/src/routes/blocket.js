@@ -4,7 +4,7 @@ const router = express.Router();
 const https = require('https');
 
 // SEK til NOK fallback (oppdateres via /api/search/rates)
-const FALLBACK_SEK_TO_NOK = 0.098;
+const FALLBACK_SEK_TO_NOK = 0.98;
 
 function httpsGet(url) {
   return new Promise((resolve, reject) => {
