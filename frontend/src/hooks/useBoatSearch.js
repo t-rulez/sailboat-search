@@ -47,15 +47,24 @@ export function useBoatSearch() {
         sizeMax:  params.sizeMax  || '',
       });
 
-      const [finnRes, favRes] = await Promise.all([
+      const [finnRes, blocketRes, favRes] = await Promise.all([
         fetch(`${API_URL}/api/finn?${query}`, { signal: AbortSignal.timeout(30000) }),
+        fetch(`${API_URL}/api/blocket?${query}`, { signal: AbortSignal.timeout(30000) }).catch(() => null),
         fetch(`${API_URL}/api/favorites`).catch(() => null),
       ]);
 
       if (!finnRes.ok) throw new Error(`Proxy svarte med ${finnRes.status}`);
 
       const finnData = await finnRes.json();
-      const listings = finnData?.docs || [];
+      const finnDocs = finnData?.docs || [];
+
+      let blocketDocs = [];
+      if (blocketRes?.ok) {
+        const blocketData = await blocketRes.json();
+        blocketDocs = blocketData?.docs || [];
+      }
+
+      const listings = [...finnDocs, ...blocketDocs];
 
       // Bygg opp et sett med favoritt-nøkler
       let favoriteIds = new Set();
