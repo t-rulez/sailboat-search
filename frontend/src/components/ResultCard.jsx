@@ -37,6 +37,7 @@ function CommentModal({ boat, onClose, onSave }) {
 
   const handleSave = async () => {
     setSaving(true);
+    console.log('Lagrer kommentar:', { source: boat.source, external_id: boat.external_id, text });
     try {
       const res = await fetch(
         `${API_URL}/api/listings/comment/${boat.source}/${boat.external_id}`,
@@ -46,9 +47,13 @@ function CommentModal({ boat, onClose, onSave }) {
           body: JSON.stringify({ comment: text }),
         }
       );
+      console.log('Svar status:', res.status);
       if (res.ok) {
         onSave(text);
         onClose();
+      } else {
+        const err = await res.json();
+        console.error('Feil fra server:', err);
       }
     } catch (e) {
       console.error('Lagring feilet:', e);

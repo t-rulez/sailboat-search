@@ -76,7 +76,7 @@ h1, h2, h3 {
 }
 
 .app-title {
-  font-size: clamp(1.3rem, 4vw, 2.2rem);
+  font-size: clamp(1.55rem, 4.5vw, 2.4rem);
   font-weight: 700;
   color: var(--rope-300);
   line-height: 1.15;
