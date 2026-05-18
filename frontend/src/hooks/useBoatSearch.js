@@ -99,11 +99,11 @@ export function useBoatSearch() {
       if (!res.ok) throw new Error(`Proxy svarte med ${res.status}`);
 
       const data = await res.json();
-      const docs = data?.docs || data?.response?.docs || [];
-      const listings = docs.map(parseFinnDoc).filter((d) => d.external_id);
+      // Finn returnerer nå pre-parsede docs direkte fra backend
+      const listings = (data?.docs || []).filter((d) => d.external_id);
 
       setResults(listings);
-      setTotalCount(data?.metadata?.result_size?.match_count || listings.length);
+      setTotalCount(listings.length);
 
       // Lagre i DB i bakgrunnen
       importToBackend(listings);

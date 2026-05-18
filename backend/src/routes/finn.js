@@ -3,7 +3,7 @@ const express = require('express');
 const router = express.Router();
 const https = require('https');
 
-function httpsGet(url, extraHeaders = {}) {
+function httpsGet(url) {
   return new Promise((resolve, reject) => {
     const req = https.get(url, {
       headers: {
@@ -11,11 +11,10 @@ function httpsGet(url, extraHeaders = {}) {
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Accept-Language': 'no-NO,no;q=0.9',
         'Referer': 'https://www.finn.no/',
-        ...extraHeaders,
       }
     }, (res) => {
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-        return httpsGet(res.headers.location, extraHeaders).then(resolve).catch(reject);
+        return httpsGet(res.headers.location).then(resolve).catch(reject);
       }
       let body = '';
       res.on('data', (c) => body += c);
@@ -26,56 +25,81 @@ function httpsGet(url, extraHeaders = {}) {
   });
 }
 
-function parseNextData(html) {
-  // Finn __NEXT_DATA__ script-tag
-  const match = html.match(/<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/);
-  if (!match) return null;
+function parseSeoStructuredData(html) {
+  const match = html.match(/<script id="seoStructuredData" type="application\/ld\+json">([\s\S]*?)<\/script>/);
+  if (!match) return [];
   try {
-    return JSON.parse(match[1]);
+    const json = JSON.parse(match[1]);
+    const items = json?.mainEntity?.itemListElement || [];
+    return items.map((el, i) => {
+      const item = el.item || {};
+      const offer = item.offers || {};
+      const brandRaw = item.brand?.name || '';
+      // Brand er "Lagoon Seilbåt/Motorseiler" – splitt på første mellomrom for å få merkenavn
+      const brandParts = brandRaw.split(' ');
+      const boatClass = brandParts.slice(1).join(' ') || brandRaw;
+      const brand = brandParts[0] || null;
+
+      const urlMatch = (item.url || '').match(/\/item\/(\d+)/);
+      const id = urlMatch?.[1] || String(i);
+
+      const desc = item.description || '';
+      const yearMatch = desc.match(/\b(19|20)\d{2}\b/);
+      const year = yearMatch ? parseInt(yearMatch[0]) : null;
+
+      const ftMatch = desc.match(/(\d{2})[''´`]/) || desc.match(/(\d{2})\s*fot/i);
+      const mMatch = desc.match(/([\d,]+)\s*m\b/i);
+      let lengthFt = null;
+      if (ftMatch) lengthFt = parseFloat(ftMatch[1]);
+      else if (mMatch) lengthFt = parseFloat((parseFloat(mMatch[1].replace(',', '.')) / 0.3048).toFixed(1));
+
+      return {
+        source: 'finn',
+        external_id: id,
+        url: item.url || `https://www.finn.no/mobility/item/${id}`,
+        title: item.name || desc.substring(0, 80) || 'Ukjent',
+        brand,
+        boat_class: boatClass,
+        boat_type: 'katamaran',
+        price_nok: offer.price ? Math.round(parseFloat(offer.price)) : null,
+        price_original: offer.price ? Math.round(parseFloat(offer.price)) : null,
+        currency: offer.priceCurrency || 'NOK',
+        year,
+        length_ft: lengthFt,
+        image_url: item.image || null,
+        location: null,
+        status: 'active',
+      };
+    }).filter(d => d.external_id);
   } catch (e) {
-    return null;
+    console.error('Parsing feilet:', e.message);
+    return [];
   }
 }
 
-function extractDocs(nextData) {
-  if (!nextData) return [];
-  const pp = nextData?.props?.pageProps;
-  // Prøv ulike stier i Next.js datastrukturen
-  const candidates = [
-    pp?.search?.docs,
-    pp?.searchResult?.docs,
-    pp?.initialData?.docs,
-    pp?.data?.docs,
-    pp?.listings,
-    pp?.results,
-    nextData?.props?.initialProps?.docs,
-  ];
-  for (const c of candidates) {
-    if (Array.isArray(c) && c.length > 0) return c;
-  }
-  return [];
+function parseTotalPages(html) {
+  const match = html.match(/pages="(\d+)"/);
+  return match ? parseInt(match[1]) : 1;
+}
+
+function buildUrl({ q, priceMin, priceMax, yearMin, page = 1 }) {
+  const params = new URLSearchParams({ q, sales_form: '120', sales_form_2: '121', class: '2188' });
+  if (priceMin) params.set('price_from', priceMin);
+  if (priceMax) params.set('price_to', priceMax);
+  if (yearMin)  params.set('year_from', yearMin);
+  if (page > 1) params.set('page', page);
+  // sales_form må sendes to ganger – URLSearchParams deduplikerer ikke
+  return `https://www.finn.no/mobility/search/boat?${params}&sales_form=121`;
 }
 
 // ─── GET /api/finn/debug ─────────────────────────────────
 router.get('/debug', async (req, res) => {
-  const url = 'https://www.finn.no/mobility/search/boat?q=katamaran&sales_form=120&sales_form=121';
-  console.log('Debug: henter', url);
-
+  const url = buildUrl({ q: 'katamaran', page: 1 });
+  console.log('Debug URL:', url);
   const { status, body } = await httpsGet(url).catch(e => ({ status: 'ERR', body: e.message }));
-  console.log('Debug status:', status, 'body length:', body.length);
-
-  const nextData = parseNextData(body);
-  const docs = extractDocs(nextData);
-
-  res.json({
-    status,
-    bodyLength: body.length,
-    hasNextData: !!nextData,
-    nextDataKeys: nextData ? Object.keys(nextData?.props?.pageProps || {}).slice(0, 10) : [],
-    docsFound: docs.length,
-    firstDoc: docs[0] || null,
-    htmlSnippet: body.substring(0, 300).replace(/\s+/g, ' '),
-  });
+  const docs = parseSeoStructuredData(body);
+  const totalPages = parseTotalPages(body);
+  res.json({ status, url, bodyLength: body.length, totalPages, docsFound: docs.length, docs });
 });
 
 // ─── GET /api/finn ───────────────────────────────────────
@@ -83,46 +107,46 @@ router.get('/', async (req, res) => {
   const { brand = '', yearMin = '', priceMin = '', priceMax = '', sizeMin = '', sizeMax = '' } = req.query;
   const q = ['katamaran', brand].filter(Boolean).join(' ');
 
-  const params = new URLSearchParams({
-    q,
-    sales_form: '120',
-    price_from: priceMin,
-    price_to: priceMax,
-    year_from: yearMin,
-    boat_length_from: sizeMin,
-    boat_length_to: sizeMax,
-    sort: '1',
-    rows: '48',
-    page: '1',
-  });
-
-  const url = `https://www.finn.no/mobility/search/boat?${params}`;
-  console.log('Finn URL:', url);
-
   try {
-    const { status, body } = await httpsGet(url);
-    console.log('Finn svar:', status, 'length:', body.length);
+    const allDocs = [];
 
-    if (status === 403) {
-      return res.status(403).json({ error: 'Finn blokkerer IP', docs: [] });
+    // Hent side 1 og finn antall sider
+    const url1 = buildUrl({ q, priceMin, priceMax, yearMin, page: 1 });
+    console.log('Finn side 1:', url1);
+    const { status, body: body1 } = await httpsGet(url1);
+
+    if (status === 403) return res.status(403).json({ error: 'Finn blokkerer IP', docs: [] });
+
+    const page1Docs = parseSeoStructuredData(body1);
+    const totalPages = parseTotalPages(body1);
+    allDocs.push(...page1Docs);
+    console.log(`Finn side 1: ${page1Docs.length} annonser, ${totalPages} sider totalt`);
+
+    // Hent resterende sider parallelt (maks 10 sider = ~100 resultater)
+    const maxPages = Math.min(totalPages, 10);
+    if (maxPages > 1) {
+      const pageNums = Array.from({ length: maxPages - 1 }, (_, i) => i + 2);
+      const pageResults = await Promise.all(
+        pageNums.map(async (page) => {
+          const url = buildUrl({ q, priceMin, priceMax, yearMin, page });
+          const { body } = await httpsGet(url);
+          const docs = parseSeoStructuredData(body);
+          console.log(`Finn side ${page}: ${docs.length} annonser`);
+          return docs;
+        })
+      );
+      pageResults.forEach(docs => allDocs.push(...docs));
     }
 
-    // Prøv å parse __NEXT_DATA__
-    const nextData = parseNextData(body);
-    if (nextData) {
-      const docs = extractDocs(nextData);
-      console.log(`Finn: ${docs.length} annonser fra __NEXT_DATA__`);
-      if (docs.length > 0) {
-        return res.json({ docs });
-      }
-      // Logg pageProps-nøkler for debugging
-      console.log('pageProps keys:', Object.keys(nextData?.props?.pageProps || {}).join(', '));
-    } else {
-      console.log('Ingen __NEXT_DATA__ funnet');
-      console.log('HTML-start:', body.substring(0, 200).replace(/\s+/g, ' '));
-    }
+    // Filtrer på størrelse hvis oppgitt
+    const filtered = allDocs.filter(d => {
+      if (sizeMin && d.length_ft && d.length_ft < parseFloat(sizeMin)) return false;
+      if (sizeMax && d.length_ft && d.length_ft > parseFloat(sizeMax)) return false;
+      return true;
+    });
 
-    res.json({ docs: [] });
+    console.log(`Finn totalt: ${allDocs.length} annonser, ${filtered.length} etter størrelsefilter`);
+    res.json({ docs: filtered });
   } catch (err) {
     console.error('Finn feil:', err.message);
     res.status(500).json({ error: err.message, docs: [] });
