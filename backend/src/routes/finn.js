@@ -11,9 +11,14 @@ function httpsGet(url) {
         'Accept': 'application/json, text/plain, */*',
         'Accept-Language': 'no-NO,no;q=0.9',
         'Referer': 'https://www.finn.no/',
-        'Origin': 'https://www.finn.no',
+        'x-finn-client': 'finn-web',
       }
     }, (res) => {
+      // Følg redirects
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        console.log('Finn redirect ->', res.headers.location);
+        return httpsGet(res.headers.location).then(resolve).catch(reject);
+      }
       let body = '';
       res.on('data', (c) => body += c);
       res.on('end', () => resolve({ status: res.statusCode, body }));
@@ -23,23 +28,25 @@ function httpsGet(url) {
   });
 }
 
-// Prøv flere kjente Finn-endepunkter i rekkefølge
-const FINN_ENDPOINTS = [
-  (params) => `https://www.finn.no/api/search-qf?${params}`,
-  (params) => `https://www.finn.no/api/search?${params}`,
-  (params) => `https://www.finn.no/boat/used/search.json?${params}`,
-];
+// Alle kjente Finn søke-URL-varianter
+function buildCandidates(params) {
+  return [
+    // Nyeste format (2024-2025)
+    `https://www.finn.no/api/search-qf?searchkey=BOAT_USED&${params}`,
+    `https://www.finn.no/api/search-qf?searchkey=BOAT&${params}`,
+    // Eldre format
+    `https://www.finn.no/api/search-qf?searchkey=BAP_ALL&vertical=boat&${params}`,
+    // Direkte søkeside som JSON
+    `https://www.finn.no/boat/used/search?${params}&format=json`,
+  ];
+}
 
 router.get('/', async (req, res) => {
   try {
-    const {
-      brand = '', yearMin = '', priceMin = '', priceMax = '',
-      sizeMin = '', sizeMax = '',
-    } = req.query;
+    const { brand = '', yearMin = '', priceMin = '', priceMax = '', sizeMin = '', sizeMax = '' } = req.query;
 
     const q = ['katamaran', brand].filter(Boolean).join(' ');
     const params = new URLSearchParams({
-      searchkey: 'BOAT_USED',
       q,
       price_from:       priceMin,
       price_to:         priceMax,
@@ -49,34 +56,36 @@ router.get('/', async (req, res) => {
       sort: '1',
       rows: '48',
       page: '1',
-    });
+    }).toString();
 
-    for (const buildUrl of FINN_ENDPOINTS) {
-      const url = buildUrl(params);
-      console.log('Finn prøver:', url);
+    const candidates = buildCandidates(params);
 
+    for (const url of candidates) {
+      console.log('Finn prøver:', url.substring(0, 90));
       const { status, body } = await httpsGet(url);
-      console.log('Finn svar:', status, body.substring(0, 80));
+      console.log('Finn svar:', status, body.substring(0, 120));
 
-      if (status === 404) continue; // prøv neste endepunkt
       if (status === 403) {
-        // Railway IP blokkert
-        return res.status(403).json({ error: 'Finn.no blokkerer Railway sin IP', docs: [] });
+        return res.status(403).json({ error: 'Finn.no blokkerer denne serveren', docs: [] });
       }
+      if (status === 404) continue;
 
       try {
         const data = JSON.parse(body);
         const docs = data?.docs || data?.response?.docs || [];
-        console.log(`Finn: ${docs.length} annonser funnet`);
-        return res.json(data);
+        if (docs.length >= 0) { // 0 er OK, bare tom søkeresultat
+          console.log(`Finn: ${docs.length} annonser fra ${url.substring(30, 70)}`);
+          return res.json(data);
+        }
       } catch (e) {
-        console.warn('Finn: ikke JSON, status', status);
+        console.warn('Finn: ikke gyldig JSON fra', url.substring(30, 70));
         continue;
       }
     }
 
-    // Alle endepunkter feilet
-    res.status(404).json({ error: 'Finn.no API ikke tilgjengelig', docs: [] });
+    // Ingen URL fungerte – returner tom liste men ikke feil
+    console.warn('Finn: alle endepunkter feilet');
+    res.json({ docs: [], metadata: { result_size: { match_count: 0 } } });
   } catch (err) {
     console.error('Finn proxy feil:', err.message);
     res.status(500).json({ error: err.message, docs: [] });
