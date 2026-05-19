@@ -105,6 +105,8 @@ export function useBoatSearch() {
       // Lagre i DB og hent first_seen_at per annonse
       importToBackend(listings).then(dates => {
         const today = new Date().toISOString();
+        console.log('Dates fra DB:', Object.keys(dates).length, 'entries');
+        console.log('Første 3:', Object.entries(dates).slice(0, 3));
         setResults(prev => prev.map(l => ({
           ...l,
           first_seen_at: dates[`${l.source}:${l.external_id}`] || l.first_seen_at || today,
