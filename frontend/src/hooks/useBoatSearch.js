@@ -14,14 +14,20 @@ function mergeFavorites(listings, favoriteIds) {
 async function importToBackend(listings) {
   if (!listings.length) return {};
   try {
+    console.log('Importerer', listings.length, 'listings til backend');
     const res = await fetch(`${API_URL}/api/search/import`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ listings }),
     });
+    console.log('Import respons status:', res.status);
     if (res.ok) {
       const data = await res.json();
+      console.log('Import data keys:', Object.keys(data));
+      console.log('dates type:', typeof data.dates, 'entries:', data.dates ? Object.keys(data.dates).length : 'null');
       return data.dates || {};
+    } else {
+      console.warn('Import feilet med status:', res.status);
     }
   } catch (e) {
     console.warn('Import til backend feilet:', e.message);
