@@ -62,7 +62,7 @@ export function useBoatSearch() {
           ? fetch(`${API_URL}/api/blocket?${query}`, { signal: AbortSignal.timeout(30000) }).catch(() => null)
           : Promise.resolve(null),
         shouldFetch('boat24')
-          ? fetch(`/api/boat24?${query}`, { signal: AbortSignal.timeout(30000) }).catch(() => null)
+          ? fetch(`https://boat24.truls.workers.dev/?${query}`, { signal: AbortSignal.timeout(30000) }).catch(() => null)
           : Promise.resolve(null),
         fetch(`${API_URL}/api/favorites`).catch(() => null),
       ]);
