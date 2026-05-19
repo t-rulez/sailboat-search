@@ -1,7 +1,5 @@
-// Vercel Serverless Function – proxy for Boat24
-// Kjøres på Vercels edge-nettverk, ikke blokkert av Boat24
-
-const https = require('https');
+// Vercel Serverless Function – ESM format
+import https from 'https';
 
 function httpsGet(url) {
   return new Promise((resolve, reject) => {
@@ -52,39 +50,24 @@ function parsePrice(str) {
 
 function parseListings(html) {
   const results = [];
-  // Parse blurb blocks med regex siden vi ikke har cheerio i Vercel functions
-  const blurbRegex = /<div class="blurb[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/li>/g;
-
-  // Enklere: parse direkte etter kjente mønstre
-  const idRegex = /data-id="(\d+)"/g;
-  const titleRegex = /<h3 class="blurb__title"><a href="([^"]+)"[^>]*>([^<]+)<\/a>/g;
-  const priceRegex = /<p class="blurb__price">([^<]+)<\/p>/g;
-  const yearRegex = /<span class="blurb__value">(\d{4})<\/span><span class="blurb__key">Årgang<\/span>/g;
-  const locationRegex = /<p class="blurb__location">([^<]+)/g;
-  const imgRegex = /data-srcset="(https:\/\/static\.b24\.co\/fotos\/small\/[^\s,]+\.jpg)/g;
-
-  const ids = [...html.matchAll(idRegex)].map(m => m[1]);
-  const titles = [...html.matchAll(titleRegex)].map(m => ({ url: m[1], title: m[2] }));
-  const prices = [...html.matchAll(priceRegex)].map(m => parsePrice(m[1]));
-  const years = [...html.matchAll(yearRegex)].map(m => parseInt(m[1]));
-  const locations = [...html.matchAll(locationRegex)].map(m => 
+  const idMatches     = [...html.matchAll(/data-id="(\d+)"/g)].map(m => m[1]);
+  const titleMatches  = [...html.matchAll(/<h3 class="blurb__title"><a href="([^"]+)"[^>]*>([^<]+)<\/a>/g)];
+  const priceMatches  = [...html.matchAll(/<p class="blurb__price">([^<]+)<\/p>/g)].map(m => parsePrice(m[1]));
+  const yearMatches   = [...html.matchAll(/<span class="blurb__value">(\d{4})<\/span><span class="blurb__key">Årgang<\/span>/g)].map(m => parseInt(m[1]));
+  const locationMatches = [...html.matchAll(/<p class="blurb__location">([^<]+)/g)].map(m =>
     m[1].replace(/&raquo;/g, '·').replace(/\s+/g, ' ').trim()
   );
-  const imgs = [...html.matchAll(imgRegex)].map(m => m[1]);
-  // Dedupliser bilder (en per annonse)
-  const uniqueImgs = [];
-  const seenImgIds = new Set();
-  for (const img of imgs) {
-    const idMatch = img.match(/\/small\/(\d+)-/);
-    if (idMatch && !seenImgIds.has(idMatch[1])) {
-      seenImgIds.add(idMatch[1]);
-      uniqueImgs.push(img);
-    }
+
+  // Unike bilder per annonse-ID
+  const imgMap = {};
+  for (const m of html.matchAll(/data-srcset="(https:\/\/static\.b24\.co\/fotos\/small\/(\d+)-[^\s,]+\.jpg)/g)) {
+    if (!imgMap[m[2]]) imgMap[m[2]] = m[1];
   }
 
-  for (let i = 0; i < titles.length; i++) {
-    const id = ids[i] || String(i);
-    const { url, title } = titles[i];
+  for (let i = 0; i < titleMatches.length; i++) {
+    const id = idMatches[i] || String(i);
+    const url = titleMatches[i][1];
+    const title = titleMatches[i][2].trim();
     const brandMatch = url.match(/\/seilbater\/([^/]+)\//);
     const brand = brandMatch ? brandMatch[1].charAt(0).toUpperCase() + brandMatch[1].slice(1) : null;
 
@@ -92,16 +75,16 @@ function parseListings(html) {
       source: 'boat24',
       external_id: id,
       url: url.startsWith('http') ? url : `https://www.boat24.com${url}`,
-      title: title.trim(),
+      title,
       brand,
       boat_type: 'katamaran',
-      price_nok: prices[i] || null,
-      price_original: prices[i] || null,
+      price_nok: priceMatches[i] || null,
+      price_original: priceMatches[i] || null,
       currency: 'NOK',
-      year: years[i] || null,
+      year: yearMatches[i] || null,
       length_ft: null,
-      image_url: uniqueImgs[i] || null,
-      location: locations[i] || null,
+      image_url: imgMap[id] || null,
+      location: locationMatches[i] || null,
       status: 'active',
     });
   }
@@ -110,17 +93,15 @@ function parseListings(html) {
 
 function parseTotalPages(html) {
   let maxPage = 1;
-  const pgMatches = [...html.matchAll(/pg=(\d+)/g)];
-  for (const m of pgMatches) {
+  for (const m of html.matchAll(/pg=(\d+)/g)) {
     maxPage = Math.max(maxPage, parseInt(m[1]));
   }
   return maxPage;
 }
 
-module.exports = async (req, res) => {
-  // CORS
+export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   const { brand = '', yearMin = '', priceMin = '', priceMax = '', sizeMin = '', sizeMax = '' } = req.query;
@@ -128,14 +109,12 @@ module.exports = async (req, res) => {
   try {
     const allDocs = [];
     const url1 = buildUrl({ brand, yearMin, priceMin, priceMax, sizeMin, sizeMax, page: 1 });
-    console.log('Boat24 Vercel proxy URL:', url1);
+    console.log('Boat24 Vercel URL:', url1);
 
     const { status, body: body1 } = await httpsGet(url1);
     console.log('Boat24 status:', status, 'len:', body1.length);
 
-    if (status === 403) {
-      return res.status(403).json({ error: 'Boat24 blokkerer', docs: [] });
-    }
+    if (status === 403) return res.status(403).json({ error: 'Boat24 blokkerer', docs: [] });
 
     const page1Docs = parseListings(body1);
     const totalPages = parseTotalPages(body1);
@@ -155,9 +134,10 @@ module.exports = async (req, res) => {
       pageResults.forEach(docs => allDocs.push(...docs));
     }
 
+    console.log(`Boat24 totalt: ${allDocs.length} annonser`);
     res.json({ docs: allDocs });
   } catch (err) {
     console.error('Boat24 Vercel feil:', err.message);
     res.status(500).json({ error: err.message, docs: [] });
   }
-};
+}
