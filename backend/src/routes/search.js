@@ -1,6 +1,6 @@
 'use strict';
 const express = require('express');
-const router = express.Router(); 
+const router = express.Router();
 const db = require('../db');
 const https = require('https');
 
@@ -63,7 +63,7 @@ router.post('/import', async (req, res) => {
       if (!source || !external_id) continue;
 
       const existing = await db.query(
-        'SELECT id, price_nok FROM listings WHERE source=$1 AND external_id=$2',
+        'SELECT id, price_nok, first_seen_at FROM listings WHERE source=$1 AND external_id=$2',
         [source, external_id]
       );
 
