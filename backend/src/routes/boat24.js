@@ -2,6 +2,7 @@
 const express = require('express');
 const router = express.Router();
 const https = require('https');
+const cheerio = require('cheerio');
 
 function httpsGet(url) {
   return new Promise((resolve, reject) => {
@@ -26,107 +27,134 @@ function httpsGet(url) {
   });
 }
 
-function buildUrl({ brand, yearMin, priceMin, priceMax, sizeMin, sizeMax }) {
-  // Priser er allerede i NOK siden whr=NOK
-  // Lengde konverteres fra fot til meter
+function buildUrl({ brand, yearMin, priceMin, priceMax, sizeMin, sizeMax, page = 1 }) {
   const params = new URLSearchParams();
   if (brand)    params.set('src', brand);
   params.set('cat', '1');
   params.append('typ[]', '231');  // Katamaran
-  params.set('whr', 'NOK');       // Valuta NOK
+  params.set('whr', 'NOK');
   if (priceMin) params.set('prs_min', priceMin);
   if (priceMax) params.set('prs_max', priceMax);
   if (sizeMin)  params.set('lge_min', Math.round(parseInt(sizeMin) * 0.3048));
   if (sizeMax)  params.set('lge_max', Math.round(parseInt(sizeMax) * 0.3048));
   if (yearMin)  params.set('jhr_min', yearMin);
-  // Region: Norge=43, Sverige=49, Danmark=15
-  params.append('rgo[]', '43');
-  params.append('rgo[]', '49');
-  params.append('rgo[]', '15');
+  params.append('rgo[]', '43');  // Norge
+  params.append('rgo[]', '49');  // Sverige
+  params.append('rgo[]', '15');  // Danmark
   params.set('slt', '0');
+  if (page > 1) params.set('pg', page);
   return `https://www.boat24.com/no/seilbater/?${params}`;
 }
 
-function parseSeoStructuredData(html) {
-  const match = html.match(/<script[^>]+type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/g);
-  if (!match) return [];
+function parsePrice(str) {
+  if (!str) return null;
+  // "NOK 3 940 000,-" → 3940000
+  const num = parseInt(str.replace(/[^\d]/g, ''), 10);
+  return isNaN(num) ? null : num;
+}
 
+function parseListings($) {
   const results = [];
-  for (const tag of match) {
-    const jsonStr = tag.replace(/<script[^>]*>/, '').replace(/<\/script>/, '');
-    try {
-      const json = JSON.parse(jsonStr);
-      // Boat24 kan bruke ItemList eller Product direkte
-      const items = json?.itemListElement || (json['@type'] === 'Product' ? [{ item: json }] : []);
-      for (const el of items) {
-        const item = el.item || el;
-        if (item['@type'] !== 'Product') continue;
 
-        const offer = Array.isArray(item.offers) ? item.offers[0] : item.offers || {};
-        const urlMatch = (item.url || '').match(/\/(\d+)\/?$/);
-        const id = urlMatch?.[1] || '';
-        if (!id) continue;
+  $('.blurb').each((_, el) => {
+    const $el = $(el);
 
-        const brandRaw = item.brand?.name || '';
-        const desc = item.description || item.name || '';
-        const yearMatch = desc.match(/\b(19|20)\d{2}\b/);
+    // ID fra data-id på bookmark
+    const id = $el.find('.blurb__bookmark').attr('data-id') || '';
+    if (!id) return;
 
-        results.push({
-          source: 'boat24',
-          external_id: id,
-          url: item.url || `https://www.boat24.com/no/seilbater/${id}/`,
-          title: item.name || desc.substring(0, 80) || 'Ukjent',
-          brand: brandRaw || null,
-          boat_type: 'katamaran',
-          price_nok: offer.price ? Math.round(parseFloat(offer.price)) : null,
-          price_original: offer.price ? Math.round(parseFloat(offer.price)) : null,
-          currency: 'NOK',
-          year: yearMatch ? parseInt(yearMatch[0]) : null,
-          length_ft: null,
-          image_url: Array.isArray(item.image) ? item.image[0] : item.image || null,
-          location: null,
-          status: 'active',
-        });
+    // Tittel og URL
+    const $titleLink = $el.find('.blurb__title a');
+    const title = $titleLink.text().trim();
+    const url = $titleLink.attr('href') || '';
+    if (!title || !url) return;
+
+    // Pris
+    const priceText = $el.find('.blurb__price').first().text().trim();
+    const priceNok = parsePrice(priceText);
+
+    // År — finn <span class="blurb__key"> som inneholder "Årgang"
+    let year = null;
+    $el.find('.blurb__fact').each((_, fact) => {
+      const key = $(fact).find('.blurb__key').text().trim();
+      if (key === 'Årgang') {
+        const val = parseInt($(fact).find('.blurb__value').text().trim());
+        if (!isNaN(val)) year = val;
       }
-    } catch (e) { /* ikke JSON */ }
-  }
+    });
+    // Fallback: sjekk blurb__description
+    if (!year) {
+      $el.find('.blurb__description li').each((_, li) => {
+        const m = $(li).text().match(/Årgang (\d{4})/);
+        if (m) year = parseInt(m[1]);
+      });
+    }
+
+    // Sted
+    const location = $el.find('.blurb__location').first().text()
+      .replace(/»/g, '·').replace(/\s+/g, ' ').trim() || null;
+
+    // Bilde — første data-srcset
+    const imgSrcset = $el.find('.slider__slide').first().find('img').attr('data-srcset') || '';
+    const imgMatch = imgSrcset.match(/https?:\/\/[^\s,]+\.jpg/);
+    const imageUrl = imgMatch ? imgMatch[0] : null;
+
+    // Merke fra URL: /no/seilbater/lagoon/lagoon-40/detail/...
+    const brandMatch = url.match(/\/seilbater\/([^/]+)\//);
+    const brand = brandMatch ? brandMatch[1].charAt(0).toUpperCase() + brandMatch[1].slice(1) : null;
+
+    results.push({
+      source: 'boat24',
+      external_id: id,
+      url: url.startsWith('http') ? url : `https://www.boat24.com${url}`,
+      title,
+      brand,
+      boat_type: 'katamaran',
+      price_nok: priceNok,
+      price_original: priceNok,
+      currency: 'NOK',
+      year,
+      length_ft: null,
+      image_url: imageUrl,
+      location,
+      status: 'active',
+    });
+  });
+
   return results;
 }
 
-function parseTotalPages(html) {
-  const match = html.match(/pages="(\d+)"/);
-  return match ? parseInt(match[1]) : 1;
+function parseTotalPages($) {
+  // Se etter pagineringsinfo
+  const paginationText = $('.pagination, [class*="pag"]').text();
+  const match = paginationText.match(/av\s+(\d+)/i) || paginationText.match(/\/\s*(\d+)/);
+  if (match) return parseInt(match[1]);
+
+  // Alternativt: tell antall sider fra nav
+  let maxPage = 1;
+  $('a[href*="pg="]').each((_, el) => {
+    const m = $(el).attr('href')?.match(/pg=(\d+)/);
+    if (m) maxPage = Math.max(maxPage, parseInt(m[1]));
+  });
+  return maxPage;
 }
 
 // ─── GET /api/boat24/debug ───────────────────────────────
 router.get('/debug', async (req, res) => {
-  const url = buildUrl({ brand: '', yearMin: '', priceMin: '', priceMax: '', sizeMin: '', sizeMax: '' });
+  const url = buildUrl({});
   console.log('Boat24 debug URL:', url);
   const { status, body } = await httpsGet(url).catch(e => ({ status: 'ERR', body: e.message }));
-
-  const hasStructuredData = body.includes('application/ld+json');
-  const hasItemList = body.includes('itemListElement');
-  const docs = parseSeoStructuredData(body);
-  const totalPages = parseTotalPages(body);
-
-  let snippet = '';
-  if (hasStructuredData) {
-    const idx = body.indexOf('application/ld+json');
-    snippet = body.substring(idx - 10, idx + 600);
-  } else {
-    snippet = body.substring(0, 400);
-  }
+  const $ = cheerio.load(body);
+  const docs = parseListings($);
+  const totalPages = parseTotalPages($);
 
   res.json({
-    url,
-    status,
+    url, status,
     bodyLength: body.length,
-    hasStructuredData,
-    hasItemList,
     totalPages,
     docsFound: docs.length,
     firstDoc: docs[0] || null,
-    snippet,
+    docs: docs.slice(0, 3),
   });
 });
 
@@ -136,9 +164,8 @@ router.get('/', async (req, res) => {
 
   try {
     const allDocs = [];
-
-    const url1 = buildUrl({ brand, yearMin, priceMin, priceMax, sizeMin, sizeMax });
-    console.log('Boat24 søkeparametere:', { brand, yearMin, priceMin, priceMax, sizeMin, sizeMax });
+    const url1 = buildUrl({ brand, yearMin, priceMin, priceMax, sizeMin, sizeMax, page: 1 });
+    console.log('Boat24 søkeparametere:', { brand, yearMin, priceMin, priceMax });
     console.log('Boat24 side 1:', url1);
 
     const { status, body: body1 } = await httpsGet(url1);
@@ -146,21 +173,21 @@ router.get('/', async (req, res) => {
 
     if (status === 403) return res.status(403).json({ error: 'Boat24 blokkerer IP', docs: [] });
 
-    const page1Docs = parseSeoStructuredData(body1);
-    const totalPages = parseTotalPages(body1);
+    const $ = cheerio.load(body1);
+    const page1Docs = parseListings($);
+    const totalPages = parseTotalPages($);
     allDocs.push(...page1Docs);
     console.log(`Boat24 side 1: ${page1Docs.length} annonser, ${totalPages} sider totalt`);
 
-    // Hent resterende sider parallelt
     const maxPages = Math.min(totalPages, 10);
     if (maxPages > 1) {
       const pageNums = Array.from({ length: maxPages - 1 }, (_, i) => i + 2);
       const pageResults = await Promise.all(
         pageNums.map(async (page) => {
-          const url = buildUrl({ brand, yearMin, priceMin, priceMax, sizeMin, sizeMax });
-          const fullUrl = `${url}&pg=${page}`;
-          const { body } = await httpsGet(fullUrl);
-          const docs = parseSeoStructuredData(body);
+          const url = buildUrl({ brand, yearMin, priceMin, priceMax, sizeMin, sizeMax, page });
+          const { body } = await httpsGet(url);
+          const $p = cheerio.load(body);
+          const docs = parseListings($p);
           console.log(`Boat24 side ${page}: ${docs.length} annonser`);
           return docs;
         })
