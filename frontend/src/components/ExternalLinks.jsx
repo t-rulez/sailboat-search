@@ -39,24 +39,28 @@ function buildYachtworldUrl({ brand, yearMin, priceMin, priceMax, sizeMin, sizeM
   return `https://www.yachtworld.com/boats-for-sale/type-sail/?${params}&country=NO,SE,DK`;
 }
 
-function buildBoat24Url({ brand, yearMin, priceMin, priceMax, sizeMin, sizeMax, rates }) {
-  const q = ['catamaran', brand].filter(Boolean).join(' ');
-  const eurRate = rates?.EUR ? 1 / rates.EUR : 0.085;
-  const params = new URLSearchParams({ q });
-  ['NO', 'SE', 'DK'].forEach(c => params.append('country[]', c));
-  if (yearMin)  params.set('year_from', yearMin);
-  if (priceMin) params.set('price_from', Math.round(parseInt(priceMin) * eurRate));
-  if (priceMax) params.set('price_to',   Math.round(parseInt(priceMax) * eurRate));
-  if (sizeMin)  params.set('length_from', Math.round(parseInt(sizeMin) * 0.3048));
-  if (sizeMax)  params.set('length_to',   Math.round(parseInt(sizeMax) * 0.3048));
-  return `https://www.boat24.com/en/sailboats/?${params}`;
+function buildBoat24Url({ brand, yearMin, priceMin, priceMax, sizeMin, sizeMax }) {
+  const params = new URLSearchParams();
+  if (brand)    params.set('src', brand);
+  params.set('cat', '1');
+  params.append('typ[]', '231');  // Katamaran
+  params.set('whr', 'NOK');       // Priser i NOK
+  if (priceMin) params.set('prs_min', priceMin);
+  if (priceMax) params.set('prs_max', priceMax);
+  if (sizeMin)  params.set('lge_min', Math.round(parseInt(sizeMin) * 0.3048));
+  if (sizeMax)  params.set('lge_max', Math.round(parseInt(sizeMax) * 0.3048));
+  if (yearMin)  params.set('jhr_min', yearMin);
+  params.append('rgo[]', '43');   // Norge
+  params.append('rgo[]', '49');   // Sverige
+  params.append('rgo[]', '15');   // Danmark
+  params.set('slt', '0');
+  return `https://www.boat24.com/no/seilbater/?${params}`;
 }
 
 const SOURCES = [
-  { key: 'finn',       label: 'Finn.no',    flag: '🇳🇴', build: buildFinnUrl },
-  { key: 'blocket',    label: 'Blocket.se', flag: '🇸🇪', build: buildBlocketUrl },
-  { key: 'yachtworld', label: 'Yachtworld', flag: '🌍', build: buildYachtworldUrl },
-  { key: 'boat24',     label: 'Boat24',     flag: '🌍', build: buildBoat24Url },
+  { key: 'finn',    label: 'Finn.no',    flag: '🇳🇴', build: buildFinnUrl },
+  { key: 'blocket', label: 'Blocket.se', flag: '🇸🇪', build: buildBlocketUrl },
+  { key: 'boat24',  label: 'Boat24',     flag: '🌍', build: buildBoat24Url },
 ];
 
 export default function ExternalLinks({ params }) {
