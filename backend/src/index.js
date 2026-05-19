@@ -34,6 +34,7 @@ app.get('/health', (_req, res) => res.json({ ok: true, ts: new Date().toISOStrin
 app.use('/api/search',    require('./routes/search'));
 app.use('/api/finn',      require('./routes/finn'));
 app.use('/api/blocket',   require('./routes/blocket'));
+app.use('/api/boat24',    require('./routes/boat24'));
 app.use('/api/listings',  require('./routes/listings'));
 app.use('/api/favorites', require('./routes/favorites'));
 

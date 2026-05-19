@@ -54,12 +54,15 @@ export function useBoatSearch() {
 
       const shouldFetch = (src) => source === 'all' || source === src;
 
-      const [finnRes, blocketRes, favRes] = await Promise.all([
+      const [finnRes, blocketRes, boat24Res, favRes] = await Promise.all([
         shouldFetch('finn')
           ? fetch(`${API_URL}/api/finn?${query}`, { signal: AbortSignal.timeout(30000) })
           : Promise.resolve(null),
         shouldFetch('blocket')
           ? fetch(`${API_URL}/api/blocket?${query}`, { signal: AbortSignal.timeout(30000) }).catch(() => null)
+          : Promise.resolve(null),
+        shouldFetch('boat24')
+          ? fetch(`${API_URL}/api/boat24?${query}`, { signal: AbortSignal.timeout(30000) }).catch(() => null)
           : Promise.resolve(null),
         fetch(`${API_URL}/api/favorites`).catch(() => null),
       ]);
@@ -78,7 +81,13 @@ export function useBoatSearch() {
         blocketDocs = blocketData?.docs || [];
       }
 
-      const listings = [...finnDocs, ...blocketDocs];
+      let boat24Docs = [];
+      if (boat24Res?.ok) {
+        const boat24Data = await boat24Res.json();
+        boat24Docs = boat24Data?.docs || [];
+      }
+
+      const listings = [...finnDocs, ...blocketDocs, ...boat24Docs];
 
       // Bygg opp et sett med favoritt-nøkler
       let favoriteIds = new Set();
