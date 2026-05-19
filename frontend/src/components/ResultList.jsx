@@ -8,11 +8,10 @@ const SORT_OPTIONS = [
 ];
 
 const SOURCE_OPTIONS = [
-  { key: 'all',        label: 'Alle kilder' },
-  { key: 'finn',       label: '🇳🇴 Finn.no' },
-  { key: 'blocket',    label: '🇸🇪 Blocket.se' },
-  { key: 'yachtworld', label: '🌍 Yachtworld' },
-  { key: 'boat24',     label: '🌍 Boat24' },
+  { key: 'all',     label: 'Alle kilder' },
+  { key: 'finn',    label: '🇳🇴 Finn.no' },
+  { key: 'blocket', label: '🇸🇪 Blocket.se' },
+  { key: 'boat24',  label: '🌍 Boat24' },
 ];
 
 export default function ResultList({ results, totalCount, onToggleFavorite, onSortChange, sortKey, sortDir, source, onSourceChange, showComment = false }) {

@@ -86,8 +86,14 @@ export default function App() {
 
   // Sorter resultater lokalt
   const sortedResults = [...results].sort((a, b) => {
-    const av = a[sortKey] ?? (sortDir === 'asc' ? Infinity : -Infinity);
-    const bv = b[sortKey] ?? (sortDir === 'asc' ? Infinity : -Infinity);
+    const av = a[sortKey] ?? null;
+    const bv = b[sortKey] ?? null;
+    if (av === null && bv === null) return 0;
+    if (av === null) return 1;
+    if (bv === null) return -1;
+    if (typeof av === 'string') {
+      return sortDir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
+    }
     return sortDir === 'asc' ? av - bv : bv - av;
   });
 
@@ -194,8 +200,11 @@ export default function App() {
           {!favLoading && favorites.length > 0 && (
             <ResultList
               results={[...favorites].sort((a, b) => {
-                const av = a[sortKey] ?? (sortDir === 'asc' ? Infinity : -Infinity);
-                const bv = b[sortKey] ?? (sortDir === 'asc' ? Infinity : -Infinity);
+                const av = a[sortKey] ?? null;
+                const bv = b[sortKey] ?? null;
+                if (av === null && bv === null) return 0;
+                if (av === null) return 1;
+                if (bv === null) return -1;
                 if (typeof av === 'string') return sortDir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
                 return sortDir === 'asc' ? av - bv : bv - av;
               })}
