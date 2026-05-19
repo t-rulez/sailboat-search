@@ -107,7 +107,7 @@ export function useBoatSearch() {
         const today = new Date().toISOString();
         setResults(prev => prev.map(l => ({
           ...l,
-          first_seen_at: dates[l.external_id] || l.first_seen_at || today,
+          first_seen_at: dates[`${l.source}:${l.external_id}`] || l.first_seen_at || today,
         })));
       });
 

@@ -86,11 +86,11 @@ router.post('/import', async (req, res) => {
             [result.rows[0].id, price_nok]
           );
         }
-        dates[external_id] = new Date().toISOString();
+        dates[`${source}:${external_id}`] = new Date().toISOString();
         inserted++;
       } else {
         const row = existing.rows[0];
-        dates[external_id] = row.first_seen_at;
+        dates[`${source}:${external_id}`] = row.first_seen_at;
         const priceChanged = price_nok && row.price_nok !== price_nok;
         await db.query(
           `UPDATE listings SET
