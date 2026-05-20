@@ -96,7 +96,9 @@ router.post('/import', async (req, res) => {
           `UPDATE listings SET
              url=$3, title=$4, brand=$5, boat_type=$6,
              price_nok=$7, price_original=$8, currency=$9,
-             year=$10, length_ft=$11, image_url=$12, location=$13,
+             year=$10, length_ft=$11,
+             image_url=COALESCE($12, image_url),
+             location=COALESCE($13, location),
              status='active', last_checked_at=NOW(),
              last_changed_at=CASE WHEN $7::integer != price_nok THEN NOW() ELSE last_changed_at END
            WHERE source=$1 AND external_id=$2`,
